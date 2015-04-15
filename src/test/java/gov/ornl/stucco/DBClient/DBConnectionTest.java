@@ -166,6 +166,12 @@ extends TestCase
 		DBConnection c = null;
 		try{
 			RexsterClient client = DBConnection.createClient(DBConnection.getTestConfig(), WAIT_TIME);
+			List names = client.execute("mgmt = g.getManagementSystem();mgmt.getPropertyKey(\"setProp\");");
+			if(names.get(0) == null){
+				client.execute("mgmt = g.getManagementSystem();"
+					+ "name = mgmt.makePropertyKey(\"setProp\").dataType(String.class).cardinality(Cardinality.SET).make();"
+					+ "mgmt.commit();g;");
+			}
 			c = new DBConnection( client );
 			c.createIndices();
 		}catch(Exception e){
@@ -178,23 +184,26 @@ extends TestCase
 		Map<String, Object> props = new HashMap<String,Object>();
 		props.put("NAME", "testvert_55");
 		c.commit();
-		c.execute("v = g.addVertex();v.setProperty(\"z\",55);v.setProperty(\"name\",NAME)", props);
+		c.execute("v = g.addVertex();v.setProperty(\"z\",55);v.addProperty(\"setProp\",\"aaaa\");v.setProperty(\"name\",NAME)", props);
 		c.commit();
-		
-		//c.execute("g.commit();v = g.addVertex();v.setProperty(\"z\",55);v.setProperty(\"name\",\"testvert_55\");g.commit()");
 
 		String id = c.findVertId("testvert_55");
 		Map<String, Object> query_ret_map = c.getVertByID(id);
 		assertEquals( "55", query_ret_map.get("z").toString());
+		assertEquals( "[aaaa]", query_ret_map.get("setProp").toString());
 
 		Map<String, Object> newProps = new HashMap<String, Object>();
 		newProps.put("y", "33");
 		newProps.put("z", "44");
+		newProps.put("setProp", "bbbb");
 		c.updateVert(id, newProps);
+		c.commit();
 
 		query_ret_map = c.getVertByID(id);
 		assertEquals("33", query_ret_map.get("y").toString());
 		assertEquals("44", query_ret_map.get("z").toString());
+		//System.out.println(query_ret_map.get("setProp").toString());
+		assertEquals("[aaaa, bbbb]", query_ret_map.get("setProp").toString());
 
 		c.removeCachedVertices();
 		//DBConnection.closeClient(this.client); //can close now, instead of waiting for finalize() to do it
