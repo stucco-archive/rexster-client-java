@@ -37,6 +37,7 @@ public class DBConnection {
 	private RexsterClient client = null;
 	private Logger logger = null;
 	private Map<String, String> vertIDCache = null;
+	private Map<String, String> cardinalityCache = null;
 	private String dbType = null;
 
 	public static RexsterClient createClient(Configuration configOpts){
@@ -108,6 +109,7 @@ public class DBConnection {
 		//TODO
 		logger = LoggerFactory.getLogger(DBConnection.class);
 		vertIDCache = new HashMap<String, String>(10000);
+		cardinalityCache = new HashMap<String, String>(200);
 		client = c;
 	}
 
@@ -606,12 +608,44 @@ public class DBConnection {
 		}
 	}
 
+	//TODO fix here
 	public boolean updateVertProperty(String id, String key, Object val){
+		boolean ret = false;
 		HashMap<String, Object> param = new HashMap<String, Object>();
 		param.put("ID", Integer.parseInt(id));
 		param.put("KEY", key);
 		param.put("VAL", val);
-		boolean ret = execute("g.v(ID)[KEY]=VAL", param);
+		
+		//com.thinkaurelius.titan.core.PropertyKey pkey = faunusProperty.getPropertyKey();
+		
+		String cardinality = "SINGLE";
+		
+		cardinality = cardinalityCache.get(key);
+		if(cardinality == null){
+			List<Object> queryRet;
+			try {
+				String query = "mgmt=g.getManagementSystem();mgmt.getPropertyKey('" + key + "').cardinality";
+				queryRet = client.execute(query, null);
+				commit();
+				cardinality = (String)queryRet.get(0);
+				cardinalityCache.put(key, cardinality);
+			} catch (RexProException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+		
+		//ret = execute("g.v(ID)[KEY]=VAL", param);
+		if (cardinality.equals("SINGLE")) {
+	        //ret = execute("g.v(ID)[KEY]=VAL", param);
+	        ret = execute("g.v(ID).setProperty(KEY, VAL)", param);
+	    } else {
+	        //vertex.addProperty(pkey.getName(), faunusProperty.getValue());
+	        ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+	    }
 		commit();
 		return ret;
 	}
