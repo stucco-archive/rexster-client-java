@@ -82,7 +82,7 @@ extends TestCase
 		} //the possible NPE below is fine, don't care if test errors.
 
 		c.removeCachedVertices();
-		//c.removeAllEdges();
+		c.removeAllVertices();
 
 		String vert1 = "{" +
 				"\"_id\":\"CVE-1999-0002\"," +
@@ -173,7 +173,7 @@ extends TestCase
 		} //the possible NPE below is fine, don't care if test errors.
 
 		c.removeCachedVertices();
-		//c.removeAllEdges();
+		c.removeAllVertices();
 		
 		Map<String, Object> props = new HashMap<String,Object>();
 		props.put("NAME", "testvert_55");
