@@ -615,6 +615,10 @@ public class DBConnection {
 		HashMap<String, Object> param = new HashMap<String, Object>();
 
 		String cardinality = findCardinality(key);
+		if(cardinality == null){
+			cardinality = "SINGLE";
+			cardinalityCache.put(key, cardinality);
+		}
 
 		param.put("ID", Integer.parseInt(id));
 		param.put("KEY", key);
@@ -629,6 +633,9 @@ public class DBConnection {
 		return ret;
 	}
 	
+	/*
+	 * returns cardinality of property "key".  If not found, returns null.
+	 */
 	public String findCardinality(String key){
 		String cardinality;
 
@@ -640,8 +647,7 @@ public class DBConnection {
 				queryRet = client.execute(query, null);
 				commit();
 				if(queryRet == null || queryRet.get(0) == null){
-					cardinalityCache.put(key, "SINGLE");
-					cardinality = "SINGLE";
+					cardinality = null;
 				}else{
 					query = "mgmt=g.getManagementSystem();mgmt.getPropertyKey('" + key + "').cardinality";
 					queryRet = client.execute(query, null);
