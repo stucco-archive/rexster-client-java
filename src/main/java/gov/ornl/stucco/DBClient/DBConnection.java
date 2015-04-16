@@ -608,7 +608,6 @@ public class DBConnection {
 		}
 	}
 
-	//TODO fix here
 	public boolean updateVertProperty(String id, String key, Object val){
 		boolean ret = false;
 		HashMap<String, Object> param = new HashMap<String, Object>();
@@ -635,6 +634,9 @@ public class DBConnection {
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
+			} catch (NullPointerException e) {
+				// if 'key' doesn't exist yet, an NPE can be generated within the client.execute() call.
+				cardinality = "SINGLE";
 			}
 		}
 		
