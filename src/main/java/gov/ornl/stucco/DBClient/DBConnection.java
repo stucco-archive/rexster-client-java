@@ -694,7 +694,7 @@ public class DBConnection {
 		//NB: this query is slow enough that connection can time out if the DB starts with many vertices.
 		boolean ret = removeCachedVertices();
 		try{
-			client.execute("g.v().remove();g");
+			client.execute("g.V.remove();g");
 		}catch(Exception e){
 			e.printStackTrace();
 			ret = false;
