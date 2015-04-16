@@ -614,6 +614,22 @@ public class DBConnection {
 		boolean ret = false;
 		HashMap<String, Object> param = new HashMap<String, Object>();
 
+		String cardinality = findCardinality(key);
+
+		param.put("ID", Integer.parseInt(id));
+		param.put("KEY", key);
+		param.put("VAL", val);
+
+		if (cardinality.equals("SINGLE")) {
+			ret = execute("g.v(ID).setProperty(KEY, VAL)", param);
+		} else {
+			ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+		}
+		commit();
+		return ret;
+	}
+	
+	public String findCardinality(String key){
 		String cardinality;
 
 		cardinality = cardinalityCache.get(key);
@@ -641,18 +657,7 @@ public class DBConnection {
 				e.printStackTrace();
 			}
 		}
-
-		param.put("ID", Integer.parseInt(id));
-		param.put("KEY", key);
-		param.put("VAL", val);
-
-		if (cardinality.equals("SINGLE")) {
-			ret = execute("g.v(ID).setProperty(KEY, VAL)", param);
-		} else {
-			ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
-		}
-		commit();
-		return ret;
+		return cardinality;
 	}
 
 	/*
