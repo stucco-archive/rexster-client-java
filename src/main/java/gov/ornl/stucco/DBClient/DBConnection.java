@@ -623,7 +623,7 @@ public class DBConnection {
 				String query = "mgmt=g.getManagementSystem();mgmt.getPropertyKey('" + key + "')";
 				queryRet = client.execute(query, null);
 				commit();
-				if(queryRet == null){
+				if(queryRet == null || queryRet.get(0) == null){
 					cardinalityCache.put(key, "SINGLE");
 					cardinality = "SINGLE";
 				}else{
