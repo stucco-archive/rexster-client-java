@@ -24,7 +24,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 
+import com.thinkaurelius.titan.core.Cardinality;
 import com.thinkaurelius.titan.core.TitanGraph;
+import com.thinkaurelius.titan.graphdb.types.vertices.PropertyKeyVertex;
 import com.tinkerpop.rexster.client.RexProException;
 import com.tinkerpop.rexster.client.RexsterClient;
 import com.tinkerpop.rexster.client.RexsterClientFactory;
@@ -314,10 +316,10 @@ public class DBConnection {
 			Long newID = null;
 			if(graphType == "TitanGraph")
 				newID = (Long)client.execute("v = g.addVertex(null, VERT_PROPS);v.getId();", param).get(0);
-				//newID = (Long)client.execute("v = GraphSONUtility.vertexFromJson(VERT_PROPS, new GraphElementFactory(g), GraphSONMode.NORMAL, null);v.getId()", param).get(0);
+			//newID = (Long)client.execute("v = GraphSONUtility.vertexFromJson(VERT_PROPS, new GraphElementFactory(g), GraphSONMode.NORMAL, null);v.getId()", param).get(0);
 			if(graphType == "TinkerGraph")
 				newID = Long.parseLong((String)client.execute("v = g.addVertex(null, VERT_PROPS);v.getId();", param).get(0));
-				//newID = Long.parseLong((String)client.execute("v = GraphSONUtility.vertexFromJson(VERT_PROPS, new GraphElementFactory(g), GraphSONMode.NORMAL, null);v.getId()", param).get(0));
+			//newID = Long.parseLong((String)client.execute("v = GraphSONUtility.vertexFromJson(VERT_PROPS, new GraphElementFactory(g), GraphSONMode.NORMAL, null);v.getId()", param).get(0));
 			//System.out.println("new ID is: " + newID);
 			vertIDCache.put(name, newID.toString());
 		} catch (RexProException e) {
@@ -611,43 +613,44 @@ public class DBConnection {
 	public boolean updateVertProperty(String id, String key, Object val){
 		boolean ret = false;
 		HashMap<String, Object> param = new HashMap<String, Object>();
-		param.put("ID", Integer.parseInt(id));
-		param.put("KEY", key);
-		param.put("VAL", val);
-		
-		//com.thinkaurelius.titan.core.PropertyKey pkey = faunusProperty.getPropertyKey();
-		
-		String cardinality = "SINGLE";
-		
+
+		String cardinality;
+
 		cardinality = cardinalityCache.get(key);
 		if(cardinality == null){
 			List<Object> queryRet;
 			try {
-				String query = "mgmt=g.getManagementSystem();mgmt.getPropertyKey('" + key + "').cardinality";
+				String query = "mgmt=g.getManagementSystem();mgmt.getPropertyKey('" + key + "')";
 				queryRet = client.execute(query, null);
 				commit();
-				cardinality = (String)queryRet.get(0);
-				cardinalityCache.put(key, cardinality);
+				if(queryRet == null){
+					cardinalityCache.put(key, "SINGLE");
+					cardinality = "SINGLE";
+				}else{
+					query = "mgmt=g.getManagementSystem();mgmt.getPropertyKey('" + key + "').cardinality";
+					queryRet = client.execute(query, null);
+					commit();
+					cardinality = (String)queryRet.get(0);
+					cardinalityCache.put(key, cardinality);
+				}
 			} catch (RexProException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
-			} catch (NullPointerException e) {
-				// if 'key' doesn't exist yet, an NPE can be generated within the client.execute() call.
-				cardinality = "SINGLE";
 			}
 		}
-		
-		//ret = execute("g.v(ID)[KEY]=VAL", param);
+
+		param.put("ID", Integer.parseInt(id));
+		param.put("KEY", key);
+		param.put("VAL", val);
+
 		if (cardinality.equals("SINGLE")) {
-	        //ret = execute("g.v(ID)[KEY]=VAL", param);
-	        ret = execute("g.v(ID).setProperty(KEY, VAL)", param);
-	    } else {
-	        //vertex.addProperty(pkey.getName(), faunusProperty.getValue());
-	        ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
-	    }
+			ret = execute("g.v(ID).setProperty(KEY, VAL)", param);
+		} else {
+			ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+		}
 		commit();
 		return ret;
 	}
@@ -725,17 +728,17 @@ public class DBConnection {
 		}
 		return dbConfig;
 	}
-	
+
 	public static Map<String, Object> configMapFromFile(File configFile){
 		Map<String, Object> configMap = null;
 		try {
 			Yaml yaml = new Yaml();
 			InputStream stream = new FileInputStream(configFile);
-			
+
 			configMap = (Map<String, Object>) yaml.load( stream );
-			
+
 			//config.load(configFile);
-		
+
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
