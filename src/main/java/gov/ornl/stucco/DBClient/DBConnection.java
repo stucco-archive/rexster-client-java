@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -279,6 +280,15 @@ public class DBConnection {
 			name = id;
 			vert.put("name", name);
 		}
+		//any properties that aren't cardinality "SINGLE" can't be handled this way, handle them later. 
+		Map<String, Object> specialCardProps = new HashMap<String, Object>();
+		Set<String> keySet = new HashSet<String>( (Set<String>)vert.keySet() ); 
+		for(String key : keySet){
+			if(!findCardinality(key).equalsIgnoreCase("SINGLE")){
+				specialCardProps.put(key, vert.get(key));
+				vert.remove(key);
+			}
+		}
 		vert.remove("_id"); //Some graph servers will ignore this ID, some won't.  Just remove them so it's consistent.
 		Map<String, Object> param = new HashMap<String, Object>();
 		param.put("VERT_PROPS", vert);
@@ -290,6 +300,10 @@ public class DBConnection {
 				newID = Long.parseLong((String)client.execute("v = GraphSONUtility.vertexFromJson(VERT_PROPS, new GraphElementFactory(g), GraphSONMode.NORMAL, null);v.getId()", param).get(0));
 			//System.out.println("new ID is: " + newID);
 			vertIDCache.put(name, newID.toString());
+			//handling the non-"SINGLE" cardinality properties now.
+			for(String key : specialCardProps.keySet()){
+				updateVertProperty(newID.toString(), key, specialCardProps.get(key));
+			}
 		} catch (RexProException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -299,7 +313,7 @@ public class DBConnection {
 		}
 	}
 
-	public void addVertexFromMap(Map vert){
+	public void addVertexFromMap(Map<String, Object> vert){
 		String graphType = getDBType();
 		String name = (String)vert.get("name");
 		//System.out.println("vertex name is: " + name);
@@ -308,6 +322,14 @@ public class DBConnection {
 		if(name == null || name == ""){
 			name = id;
 			vert.put("name", name);
+		}
+		//any properties that aren't cardinality "SINGLE" can't be handled this way, handle them later. 
+		Map<String, Object> specialCardProps = new HashMap<String, Object>();
+		for(String key : vert.keySet()){
+			if(!findCardinality(key).equalsIgnoreCase("SINGLE")){
+				specialCardProps.put(key, vert.get(key));
+				vert.remove(key);
+			}
 		}
 		vert.remove("_id"); //Some graph servers will ignore this ID, some won't.  Just remove them so it's consistent.
 		Map<String, Object> param = new HashMap<String, Object>();
@@ -322,6 +344,10 @@ public class DBConnection {
 			//newID = Long.parseLong((String)client.execute("v = GraphSONUtility.vertexFromJson(VERT_PROPS, new GraphElementFactory(g), GraphSONMode.NORMAL, null);v.getId()", param).get(0));
 			//System.out.println("new ID is: " + newID);
 			vertIDCache.put(name, newID.toString());
+			//handling the non-"SINGLE" cardinality properties now.
+			for(String key : specialCardProps.keySet()){
+				updateVertProperty(newID.toString(), key, specialCardProps.get(key));
+			}
 		} catch (RexProException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
