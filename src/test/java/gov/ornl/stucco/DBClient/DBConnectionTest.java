@@ -111,8 +111,8 @@ extends TestCase
 				"\"_id\":\"asdf\"," +
 				"\"_inV\":\"CVE-1999-0002\"," +
 				"\"_outV\":\"CVE-1999-nnnn\"," +
-				"\"_label\":\"some_label_asdf\","+
-				"\"some_property\":\"some_value\""+
+				"\"_label\":\"sameAs\","+
+				"\"description\":\"some_description\""+
 				"}";
 		c.addVertexFromJSON(new JSONObject(vert1));
 		c.addVertexFromJSON(new JSONObject(vert2));
@@ -124,8 +124,11 @@ extends TestCase
 			//find this node, check some properties.
 			String id = c.findVertId("CVE-1999-0002");
 			Map<String, Object> query_ret_map = c.getVertByID(id);
-			String[] expectedRefs = {"CERT:CA-98.12.mountd","http://www.ciac.org/ciac/bulletins/j-006.shtml","http://www.securityfocus.com/bid/121","XF:linux-mountd-bo"};
+			String[] expectedRefs = {"CERT:CA-98.12.mountd","XF:linux-mountd-bo","http://www.ciac.org/ciac/bulletins/j-006.shtml","http://www.securityfocus.com/bid/121"};
 			String[] actualRefs = ((ArrayList<String>)query_ret_map.get("references")).toArray(new String[0]);
+			assertTrue(expectedRefs.length == actualRefs.length);
+			Arrays.sort(expectedRefs);
+			Arrays.sort(actualRefs);
 			assertTrue(Arrays.equals(expectedRefs, actualRefs));
 
 			//find the other node, check its properties.
@@ -184,26 +187,26 @@ extends TestCase
 		Map<String, Object> props = new HashMap<String,Object>();
 		props.put("NAME", "testvert_55");
 		c.commit();
-		c.execute("v = g.addVertex();v.setProperty(\"z\",55);v.addProperty(\"setProp\",\"aaaa\");v.setProperty(\"name\",NAME)", props);
+		c.execute("v = g.addVertex();v.setProperty(\"endIPInt\",55);v.addProperty(\"source\",\"aaaa\");v.setProperty(\"name\",NAME)", props);
 		c.commit();
 
 		String id = c.findVertId("testvert_55");
 		Map<String, Object> query_ret_map = c.getVertByID(id);
-		assertEquals( "55", query_ret_map.get("z").toString());
-		assertEquals( "[aaaa]", query_ret_map.get("setProp").toString());
+		assertEquals( "55", query_ret_map.get("endIPInt").toString());
+		assertEquals( "[aaaa]", query_ret_map.get("source").toString());
 
 		Map<String, Object> newProps = new HashMap<String, Object>();
-		newProps.put("y", "33");
-		newProps.put("z", "44");
-		newProps.put("setProp", "bbbb");
+		newProps.put("startIPInt", "33");
+		newProps.put("endIPInt", "44");
+		newProps.put("source", "bbbb");
 		c.updateVert(id, newProps);
 		c.commit();
 
 		query_ret_map = c.getVertByID(id);
-		assertEquals("33", query_ret_map.get("y").toString());
-		assertEquals("44", query_ret_map.get("z").toString());
+		assertEquals("33", query_ret_map.get("startIPInt").toString());
+		assertEquals("44", query_ret_map.get("endIPInt").toString());
 		//System.out.println(query_ret_map.get("setProp").toString());
-		assertEquals("[aaaa, bbbb]", query_ret_map.get("setProp").toString());
+		assertEquals("[aaaa, bbbb]", query_ret_map.get("source").toString());
 
 		c.removeCachedVertices();
 		//DBConnection.closeClient(this.client); //can close now, instead of waiting for finalize() to do it
