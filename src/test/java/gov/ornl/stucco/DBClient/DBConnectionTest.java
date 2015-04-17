@@ -6,8 +6,10 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.commons.configuration.Configuration;
 import org.json.JSONObject;
@@ -207,6 +209,37 @@ extends TestCase
 		assertEquals("44", query_ret_map.get("endIPInt").toString());
 		//System.out.println(query_ret_map.get("setProp").toString());
 		assertEquals("[aaaa, bbbb]", query_ret_map.get("source").toString());
+		
+		newProps = new HashMap<String, Object>();
+		String[] sourceArray = {"cccc", "dddd"};
+		newProps.put("source", sourceArray);
+		c.updateVert(id, newProps);
+		c.commit();
+
+		query_ret_map = c.getVertByID(id);
+		assertEquals("[aaaa, bbbb, cccc, dddd]", query_ret_map.get("source").toString());
+		
+		newProps = new HashMap<String, Object>();
+		Set<String> sourceSet = new HashSet<String>();
+		sourceSet.add("eeee");
+		sourceSet.add("ffff");
+		newProps.put("source", sourceSet);
+		c.updateVert(id, newProps);
+		c.commit();
+
+		query_ret_map = c.getVertByID(id);
+		assertEquals("[aaaa, bbbb, cccc, dddd, eeee, ffff]", query_ret_map.get("source").toString());
+		
+		newProps = new HashMap<String, Object>();
+		List<String> sourceList = new ArrayList<String>();
+		sourceList.add("gggg");
+		sourceList.add("hhhh");
+		newProps.put("source", sourceList);
+		c.updateVert(id, newProps);
+		c.commit();
+
+		query_ret_map = c.getVertByID(id);
+		assertEquals("[aaaa, bbbb, cccc, dddd, eeee, ffff, gggg, hhhh]", query_ret_map.get("source").toString());
 
 		c.removeCachedVertices();
 		//DBConnection.closeClient(this.client); //can close now, instead of waiting for finalize() to do it
