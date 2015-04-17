@@ -8,6 +8,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -16,10 +17,12 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import org.apache.commons.configuration.BaseConfiguration;
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.configuration.PropertiesConfiguration;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -648,12 +651,35 @@ public class DBConnection {
 
 		param.put("ID", Integer.parseInt(id));
 		param.put("KEY", key);
-		param.put("VAL", val);
 
 		if (cardinality.equals("SINGLE")) {
+			param.put("VAL", val);
 			ret = execute("g.v(ID).setProperty(KEY, VAL)", param);
 		} else {
-			ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+			if(val instanceof JSONArray){
+				for(int i=0; i<((JSONArray)val).length(); i++){ 
+					param.put("VAL",((JSONArray)val).get(i));
+					ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+				}
+			}else if(val instanceof Set){
+				for(Object item : (Set)val){ 
+					param.put("VAL", item);
+					ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+				}
+			}else if(val instanceof List){
+				for(Object item : (List)val){ 
+					param.put("VAL", item);
+					ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+				}
+			}else if(val instanceof Object[]){
+				for(int i=0; i<((Object[])val).length; i++){ 
+					param.put("VAL", ((Object[])val)[i]);
+					ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+				}
+			}else{
+				param.put("VAL", val);
+				ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+			}
 		}
 		commit();
 		return ret;
