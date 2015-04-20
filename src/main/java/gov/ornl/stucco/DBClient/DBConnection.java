@@ -328,8 +328,9 @@ public class DBConnection {
 		}
 		//any properties that aren't cardinality "SINGLE" can't be handled this way, handle them later. 
 		Map<String, Object> specialCardProps = new HashMap<String, Object>();
-		for(String key : vert.keySet()){
-			if(!findCardinality(key).equalsIgnoreCase("SINGLE")){
+		Set<String> keySet = new HashSet<String>( (Set<String>)vert.keySet() );
+		for(String key : keySet){
+			if(findCardinality(key) != null && !findCardinality(key).equalsIgnoreCase("SINGLE")){
 				specialCardProps.put(key, vert.get(key));
 				vert.remove(key);
 			}
