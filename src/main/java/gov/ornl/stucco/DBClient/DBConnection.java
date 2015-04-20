@@ -287,7 +287,7 @@ public class DBConnection {
 		Map<String, Object> specialCardProps = new HashMap<String, Object>();
 		Set<String> keySet = new HashSet<String>( (Set<String>)vert.keySet() ); 
 		for(String key : keySet){
-			if(!findCardinality(key).equalsIgnoreCase("SINGLE")){
+			if(findCardinality(key) != null && !findCardinality(key).equalsIgnoreCase("SINGLE")){
 				specialCardProps.put(key, vert.get(key));
 				vert.remove(key);
 			}
