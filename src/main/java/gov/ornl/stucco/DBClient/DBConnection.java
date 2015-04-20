@@ -657,29 +657,66 @@ public class DBConnection {
 			param.put("VAL", val);
 			ret = execute("g.v(ID).setProperty(KEY, VAL)", param);
 		} else {
+			boolean skipVal = false;
 			if(val instanceof JSONArray){
-				for(int i=0; i<((JSONArray)val).length(); i++){ 
-					param.put("VAL",((JSONArray)val).get(i));
-					ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+				for(int i=0; i<((JSONArray)val).length(); i++){
+					Object currVal = ((JSONArray)val).get(i);
+					if(cardinality.equals("SET")){
+						Map<String, Object> query_ret_map = getVertByID(id);
+						if(query_ret_map.get(key) != null && ((List)query_ret_map.get(key)).contains(currVal)) skipVal = true;
+					}
+					if(!skipVal){
+						param.put("VAL",currVal);
+						ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+					}
+					skipVal = false;
 				}
 			}else if(val instanceof Set){
-				for(Object item : (Set)val){ 
-					param.put("VAL", item);
-					ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+				for(Object currVal : (Set)val){
+					if(cardinality.equals("SET")){
+						Map<String, Object> query_ret_map = getVertByID(id);
+						if(query_ret_map.get(key) != null && ((List)query_ret_map.get(key)).contains(currVal)) skipVal = true;
+					}
+					if(!skipVal){
+						param.put("VAL", currVal);
+						ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+					}
+					skipVal = false;
 				}
 			}else if(val instanceof List){
-				for(Object item : (List)val){ 
-					param.put("VAL", item);
-					ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+				for(Object currVal : (List)val){
+					if(cardinality.equals("SET")){
+						Map<String, Object> query_ret_map = getVertByID(id);
+						if(query_ret_map.get(key) != null && ((List)query_ret_map.get(key)).contains(currVal)) skipVal = true;
+					}
+					if(!skipVal){
+						param.put("VAL", currVal);
+						ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+					}
+					skipVal = false;
 				}
 			}else if(val instanceof Object[]){
 				for(int i=0; i<((Object[])val).length; i++){ 
-					param.put("VAL", ((Object[])val)[i]);
-					ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+					Object currVal = ((Object[])val)[i];
+					if(cardinality.equals("SET")){
+						Map<String, Object> query_ret_map = getVertByID(id);
+						if(query_ret_map.get(key) != null && ((List)query_ret_map.get(key)).contains(currVal)) skipVal = true;
+					}
+					if(!skipVal){
+						param.put("VAL", currVal);
+						ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+					}
+					skipVal = false;
 				}
 			}else{
-				param.put("VAL", val);
-				ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+				if(cardinality.equals("SET")){
+					Map<String, Object> query_ret_map = getVertByID(id);
+					if(query_ret_map.get(key) != null && ((List)query_ret_map.get(key)).contains(val)) skipVal = true;
+				}
+				if(!skipVal){
+					param.put("VAL", val);
+					ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
+				}
 			}
 		}
 		commit();

@@ -191,8 +191,12 @@ extends TestCase
 		c.commit();
 		c.execute("v = g.addVertex();v.setProperty(\"endIPInt\",55);v.addProperty(\"source\",\"aaaa\");v.setProperty(\"name\",NAME)", props);
 		c.commit();
-
+		
 		String id = c.findVertId("testvert_55");
+		
+		c.updateVertProperty(id, "source", "aaaa");
+		c.commit();
+		
 		Map<String, Object> query_ret_map = c.getVertByID(id);
 		assertEquals( "55", query_ret_map.get("endIPInt").toString());
 		assertEquals( "[aaaa]", query_ret_map.get("source").toString());
