@@ -171,10 +171,10 @@ extends TestCase
 		DBConnection c = null;
 		try{
 			RexsterClient client = DBConnection.createClient(DBConnection.getTestConfig(), WAIT_TIME);
-			List names = client.execute("mgmt = g.getManagementSystem();mgmt.getPropertyKey(\"setProp\");");
+			List names = client.execute("mgmt = g.getManagementSystem();mgmt.getPropertyKey(\"source\");");
 			if(names.get(0) == null){
 				client.execute("mgmt = g.getManagementSystem();"
-					+ "name = mgmt.makePropertyKey(\"setProp\").dataType(String.class).cardinality(Cardinality.SET).make();"
+					+ "name = mgmt.makePropertyKey(\"source\").dataType(String.class).cardinality(Cardinality.SET).make();"
 					+ "mgmt.commit();g;");
 			}
 			c = new DBConnection( client );
