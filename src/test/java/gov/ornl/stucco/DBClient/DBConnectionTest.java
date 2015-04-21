@@ -28,7 +28,7 @@ import junit.framework.TestSuite;
 public class DBConnectionTest 
 extends TestCase
 {
-	private static final int WAIT_TIME = 30;
+	private static final int WAIT_TIME = 3;
 	
 	/**
 	 * Create the test case
@@ -77,6 +77,12 @@ extends TestCase
 		try{
 			Configuration config = DBConnection.getTestConfig();
 			RexsterClient client = DBConnection.createClient(config, WAIT_TIME);
+			List names = client.execute("mgmt = g.getManagementSystem();mgmt.getPropertyKey(\"source\");");
+			if(names.get(0) == null){
+				client.execute("mgmt = g.getManagementSystem();"
+					+ "name = mgmt.makePropertyKey(\"source\").dataType(String.class).cardinality(Cardinality.SET).make();"
+					+ "mgmt.commit();g;");
+			}
 			c = new DBConnection( client );
 			c.createIndices();
 		}catch(Exception e){
@@ -239,6 +245,15 @@ extends TestCase
 		sourceList.add("gggg");
 		sourceList.add("hhhh");
 		newProps.put("source", sourceList);
+		c.updateVert(id, newProps);
+		c.commit();
+
+		query_ret_map = c.getVertByID(id);
+		assertEquals("[aaaa, bbbb, cccc, dddd, eeee, ffff, gggg, hhhh]", query_ret_map.get("source").toString());
+		
+		newProps = new HashMap<String, Object>();
+		String[] sourceArr = new String[]{"gggg", "hhhh"};
+		newProps.put("source", sourceArr);
 		c.updateVert(id, newProps);
 		c.commit();
 
