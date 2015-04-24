@@ -89,7 +89,6 @@ extends TestCase
 			e.printStackTrace(); //TODO
 		} //the possible NPE below is fine, don't care if test errors.
 
-		c.removeCachedVertices();
 		c.removeAllVertices();
 
 		String vert1 = "{" +
@@ -115,19 +114,10 @@ extends TestCase
 				"\"status\":\"Entry\","+
 				"\"score\":1.0"+
 				"}";
-		String edge = "{"+ 
-				"\"_id\":\"asdf\"," +
-				"\"_inV\":\"CVE-1999-0002\"," +
-				"\"_outV\":\"CVE-1999-nnnn\"," +
-				"\"_label\":\"sameAs\","+
-				"\"description\":\"some_description\""+
-				"}";
 		c.addVertexFromJSON(new JSONObject(vert1));
 		c.addVertexFromJSON(new JSONObject(vert2));
 		c.commit();
-		c.addEdgeFromJSON(new JSONObject(edge));
-		c.commit();
-
+		
 		try {
 			//find this node, check some properties.
 			String id = c.findVertId("CVE-1999-0002");
@@ -147,15 +137,43 @@ extends TestCase
 			actualRefs = ((ArrayList<String>)query_ret_map.get("references")).toArray(new String[0]);
 			assertTrue(Arrays.equals(expectedRefs, actualRefs));
 
-			//and now test the edge between them
+			//There should be no edge between them
+			assertEquals(0, c.getEdgeCount(id, id2, "sameAs"));
+			assertEquals(0, c.getEdgeCount(id2, id, "sameAs")); //just to be sure.
+			
+		} catch (RexProException e) {
+			fail("RexProException");
+			e.printStackTrace();
+		} catch (IOException e) {
+			fail("IOException");
+			e.printStackTrace();
+		}
+		
+		String edge = "{"+ 
+				"\"_id\":\"asdf\"," +
+				"\"_inV\":\"CVE-1999-0002\"," +
+				"\"_outV\":\"CVE-1999-nnnn\"," +
+				"\"_label\":\"sameAs\","+
+				"\"description\":\"some_description\""+
+				"}";
+		c.addEdgeFromJSON(new JSONObject(edge));
+		c.commit();
+
+		try {
+			
+			//and now we can test the edge between them
+			String id = c.findVertId("CVE-1999-0002");
+			String id2 = c.findVertId("CVE-1999-nnnn");
+			assertEquals(1, c.getEdgeCount(id, id2, "sameAs"));
+			assertEquals(0, c.getEdgeCount(id2, id, "sameAs")); //just to be sure.
 			Object query_ret;
 			query_ret = c.getClient().execute("g.v("+id2+").outE().inV();");
 			//System.out.println("query ret is: " + query_ret);
 			List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
-			query_ret_map = query_ret_list.get(0);
+			Map<String, Object> query_ret_map = query_ret_list.get(0);
 			assertEquals(id, query_ret_map.get("_id"));
 
-			c.removeCachedVertices();
+			c.removeAllVertices();
 			//DBConnection.closeClient(this.client); //can close now, instead of waiting for finalize() to do it
 
 		} catch (RexProException e) {
@@ -189,7 +207,6 @@ extends TestCase
 			e.printStackTrace(); //TODO
 		} //the possible NPE below is fine, don't care if test errors.
 
-		c.removeCachedVertices();
 		c.removeAllVertices();
 		
 		Map<String, Object> props = new HashMap<String,Object>();
@@ -260,7 +277,7 @@ extends TestCase
 		query_ret_map = c.getVertByID(id);
 		assertEquals("[aaaa, bbbb, cccc, dddd, eeee, ffff, gggg, hhhh]", query_ret_map.get("source").toString());
 
-		c.removeCachedVertices();
+		c.removeAllVertices();
 		//DBConnection.closeClient(this.client); //can close now, instead of waiting for finalize() to do it
 	}
 
