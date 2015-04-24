@@ -331,17 +331,17 @@ public class DBConnection {
 		//String edgeID = findEdgeId(edgeName);
 		if(outv_id == null){
 			logger.error("Could not find out_v for edge: " + edge);
-			//continue;
+			return;
 		}
 		if(inv_id == null){
 			logger.error("Could not find in_v for edge: " + edge);
-			//continue;
+			return;
 		}
 		String label = edge.optString("_label");
-		if(edgeExists(inv_id, outv_id, label)){
+		if(getEdgeCount(inv_id, outv_id, label) >= 1){
 			//TODO need to merge edge props for this case, like verts above...
-			logger.debug("Attempted to add edge with duplicate name.  ignoring ...");
-			//continue;
+			logger.debug("Attempted to add a duplicate edge.  ignoring .  Edge was " + edge);
+			return;
 		}
 		param.put("ID_OUT", Integer.parseInt(outv_id));
 		param.put("ID_IN", Integer.parseInt(inv_id));
