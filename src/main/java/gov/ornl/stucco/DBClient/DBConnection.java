@@ -716,9 +716,9 @@ public class DBConnection {
 	}
 
 	/*
-	 * Only use in tests.
+	 * Only used by removeAllVertices()
 	 */
-	public boolean removeCachedVertices(){
+	private boolean removeCachedVertices(){
 		//NB: this query is slow enough that connection can time out if the DB starts with many vertices.
 
 		if(vertIDCache.isEmpty())
@@ -757,7 +757,8 @@ public class DBConnection {
 	 */
 	public boolean removeAllVertices(){
 		//NB: this query is slow enough that connection can time out if the DB starts with many vertices.
-		boolean ret = removeCachedVertices();
+		boolean ret = false; 
+		removeCachedVertices();
 		try{
 			client.execute("g.V.remove();g");
 		}catch(Exception e){
