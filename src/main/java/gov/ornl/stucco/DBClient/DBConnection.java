@@ -563,33 +563,56 @@ public class DBConnection {
     }
 	 */
 
+	/*
+	 * @deprecated use getEdgeCount instead
+	 */
+	@Deprecated
 	public boolean edgeExists(String inv_id, String outv_id, String label) {
+		return (getEdgeCount(inv_id, outv_id, label) > 0);
+	}
+	
+	/*
+	 * returns edge count, or -1 if IDs not found, or ifother error occurred.
+	 */
+	public int getEdgeCount(String inv_id, String outv_id, String label) {
+		int edgeCount = 0;
 		if(inv_id == null || inv_id == "" || outv_id == null || outv_id == "" || label == null || label == "")
-			return false;
+			return -1;
 
 		Map<String, Object> param = new HashMap<String, Object>();
 		param.put("ID_OUT", Integer.parseInt(outv_id));
+		param.put("ID_IN", Integer.parseInt(inv_id));
 		param.put("LABEL", label);
 		Object query_ret;
 		try {
+			query_ret = client.execute("g.v(ID_OUT);", param);
+			if(query_ret == null){
+				logger.warn("edgesExist could not find out_id:" + outv_id);
+				return -1;
+			}
+			query_ret = client.execute("g.v(ID_IN);", param);
+			if(query_ret == null){
+				logger.warn("edgesExist could not find inv_id:" + inv_id);
+				return -1;
+			}
 			query_ret = client.execute("g.v(ID_OUT).outE(LABEL).inV();", param);
 		} catch (RexProException e) {
-			logger.error("edgeExists RexProException for args:" + outv_id + ", " + label + ", " + inv_id);
+			logger.error("edgesExist RexProException for args:" + outv_id + ", " + label + ", " + inv_id);
 			e.printStackTrace();
-			return false;
+			return -1;
 		} catch (IOException e) {
-			logger.error("edgeExists IOException for args:" + outv_id + ", " + label + ", " + inv_id);
+			logger.error("edgesExist IOException for args:" + outv_id + ", " + label + ", " + inv_id);
 			e.printStackTrace();
-			return false;
+			return -1;
 		}
 		List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
 		//logger.info("query returned: " + query_ret_list);
 		for(Map<String, Object> item : query_ret_list){
 			if(Integer.parseInt(inv_id) == Integer.parseInt((String)item.get("_id")))
-				return true;
+				edgeCount++;
 		}
 		//logger.info("matching edge not found");
-		return false;
+		return edgeCount;
 	}
 
 	public void updateVert(String id, Map<String, Object> props){
