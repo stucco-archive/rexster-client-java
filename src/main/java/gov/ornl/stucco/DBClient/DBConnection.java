@@ -269,51 +269,10 @@ public class DBConnection {
 			logger.error("could not configure missing indices!", e);
 		}
 		 */
-
-
 	}
 
 	public void addVertexFromJSON(JSONObject vert){
-		String graphType = getDBType();
-		String name = vert.optString("name");
-		//System.out.println("vertex name is: " + name);
-		String id = vert.optString("_id");
-		//System.out.println("vertex id is: " + id);
-		if(name == null || name == ""){ 
-			name = id;
-			vert.put("name", name);
-		}
-		//any properties that aren't cardinality "SINGLE" can't be handled this way, handle them later. 
-		Map<String, Object> specialCardProps = new HashMap<String, Object>();
-		Set<String> keySet = new HashSet<String>( (Set<String>)vert.keySet() ); 
-		for(String key : keySet){
-			if(findCardinality(key) != null && !findCardinality(key).equalsIgnoreCase("SINGLE")){
-				specialCardProps.put(key, vert.get(key));
-				vert.remove(key);
-			}
-		}
-		vert.remove("_id"); //Some graph servers will ignore this ID, some won't.  Just remove them so it's consistent.
-		Map<String, Object> param = new HashMap<String, Object>();
-		param.put("VERT_PROPS", vert);
-		try {
-			Long newID = null;
-			if(graphType == "TitanGraph")
-				newID = (Long)client.execute("v = GraphSONUtility.vertexFromJson(VERT_PROPS, new GraphElementFactory(g), GraphSONMode.NORMAL, null);v.getId()", param).get(0);
-			if(graphType == "TinkerGraph")
-				newID = Long.parseLong((String)client.execute("v = GraphSONUtility.vertexFromJson(VERT_PROPS, new GraphElementFactory(g), GraphSONMode.NORMAL, null);v.getId()", param).get(0));
-			//System.out.println("new ID is: " + newID);
-			vertIDCache.put(name, newID.toString());
-			//handling the non-"SINGLE" cardinality properties now.
-			for(String key : specialCardProps.keySet()){
-				updateVertProperty(newID.toString(), key, specialCardProps.get(key));
-			}
-		} catch (RexProException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+		addVertexFromMap(jsonVertToMap(vert));
 	}
 
 	public void addVertexFromMap(Map<String, Object> vert){
@@ -812,6 +771,31 @@ public class DBConnection {
 			ret = false;
 		}
 		return ret;
+	}
+	//see Align class
+	public List<Object> jsonArrayToList(JSONArray a){
+		List<Object> l = new ArrayList<Object>();
+		for(int i=0; i<a.length(); i++){
+			l.add(a.get(i));
+		}
+		return l;
+	}
+	
+	//see Align class	
+	public Map<String, Object> jsonVertToMap(JSONObject v){
+		Map<String, Object> vert = new HashMap<String, Object>();
+		for(Object k : v.keySet()){
+			String key = (String) k;
+			Object value = v.get(key);
+			if(value instanceof JSONArray){
+				value = jsonArrayToList((JSONArray)value);
+			}
+			else if(value instanceof JSONObject){
+				logger.warn("jsonVertToMap: unexpected property type: JSONObject for property " + key + "\n" + v);
+			}
+			vert.put(key, value);
+		}
+		return vert;
 	}
 
 	/*
