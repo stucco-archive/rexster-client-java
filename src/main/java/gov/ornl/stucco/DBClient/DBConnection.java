@@ -8,6 +8,8 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -45,6 +47,7 @@ public class DBConnection {
 	private Map<String, String> vertIDCache = null;
 	private Map<String, String> cardinalityCache = null;
 	private String dbType = null;
+	private static int TRY_LIMIT = 10;
 
 	public static RexsterClient createClient(Configuration configOpts){
 		return createClient(configOpts, 0);
@@ -62,8 +65,8 @@ public class DBConnection {
 		try {
 			client = RexsterClientFactory.open(configOpts); //this just throws "Exception."  bummer.
 		} catch (Exception e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			logger.warn(e.getLocalizedMessage());
+			logger.warn(getStackTrace(e));
 		}
 
 		//if wait time given, then wait that long, so the connection can set up.  (Mostly needed for travis-ci tests)
@@ -185,9 +188,11 @@ public class DBConnection {
 				client.execute("g.createKeyIndex('endIPInt', Vertex.class);g");
 			}
 		} catch (RexProException e) {
-			logger.error("Exception was: ",e);
+			logger.error("Exception was: ",e.getLocalizedMessage());
+			logger.warn(getStackTrace(e));
 		} catch (IOException e) {
-			logger.error("Exception was: ",e);
+			logger.error("Exception was: ",e.getLocalizedMessage());
+			logger.warn(getStackTrace(e));
 		}
 	}
 
@@ -251,7 +256,8 @@ public class DBConnection {
 			commit();
 			logger.info("Connection is good!");
 		}catch(Exception e){
-			logger.warn("could not configure missing vertex indices!", e);
+			logger.warn("could not configure missing vertex indices!", e.getLocalizedMessage());
+			logger.warn(getStackTrace(e));
 			//NB: this is (typically) non-fatal.  Multiple workers can attempt to create the indices at the same time, and some will just fail in this way.
 			//TODO: these need to either be created in one thread only, or else use proper locking.
 			//this.client = null;
@@ -271,11 +277,13 @@ public class DBConnection {
 		 */
 	}
 
-	public void addVertexFromJSON(JSONObject vert){
-		addVertexFromMap(jsonVertToMap(vert));
+	public boolean addVertexFromJSON(JSONObject vert){
+		return addVertexFromMap(jsonVertToMap(vert));
 	}
 
-	public void addVertexFromMap(Map<String, Object> vert){
+	public boolean addVertexFromMap(Map<String, Object> vert){
+		boolean ret = false;
+		Long newID = null;
 		String graphType = getDBType();
 		String name = (String)vert.get("name");
 		//System.out.println("vertex name is: " + name);
@@ -297,8 +305,8 @@ public class DBConnection {
 		vert.remove("_id"); //Some graph servers will ignore this ID, some won't.  Just remove them so it's consistent.
 		Map<String, Object> param = new HashMap<String, Object>();
 		param.put("VERT_PROPS", vert);
+		
 		try {
-			Long newID = null;
 			if(graphType == "TitanGraph")
 				newID = (Long)client.execute("v = g.addVertex(null, VERT_PROPS);v.getId();", param).get(0);
 			//newID = (Long)client.execute("v = GraphSONUtility.vertexFromJson(VERT_PROPS, new GraphElementFactory(g), GraphSONMode.NORMAL, null);v.getId()", param).get(0);
@@ -312,15 +320,38 @@ public class DBConnection {
 				updateVertProperty(newID.toString(), key, specialCardProps.get(key));
 			}
 		} catch (RexProException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			logger.warn(e.getLocalizedMessage());
+			logger.warn(getStackTrace(e));
+			return false;
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			logger.warn(e.getLocalizedMessage());
+			logger.warn(getStackTrace(e));
+			return false;
 		}
+		
+		//confirm before proceeding
+		try{
+			ret = false;
+			//commit();
+			int tryCount = 0;
+			//Confirm before proceeding
+			while(ret == false && tryCount < TRY_LIMIT){
+				//System.out.println("waiting for " + tryCount + " seconds in addVertexFromMap()");
+				waitFor(1000*tryCount + 1);
+				if( getVertByID(newID.toString()) != null && findVert(name) != null){
+					ret = true;
+				}
+			}
+		}catch(Exception e){
+			logger.warn(e.getLocalizedMessage());
+			logger.warn(getStackTrace(e));
+			ret = false;
+		}
+		return ret;
 	}
 
-	public void addEdgeFromJSON(JSONObject edge){
+	public boolean addEdgeFromJSON(JSONObject edge){
+		boolean ret = false;
 		Map<String, Object> param = new HashMap<String, Object>();
 
 		//System.out.println("edge outV is " + edge.getString("_outV"));
@@ -331,17 +362,17 @@ public class DBConnection {
 		//String edgeID = findEdgeId(edgeName);
 		if(outv_id == null){
 			logger.error("Could not find out_v for edge: " + edge);
-			return;
+			return false;
 		}
 		if(inv_id == null){
 			logger.error("Could not find in_v for edge: " + edge);
-			return;
+			return false;
 		}
 		String label = edge.optString("_label");
 		if(getEdgeCount(inv_id, outv_id, label) >= 1){
 			//TODO need to merge edge props for this case, like verts above...
 			logger.debug("Attempted to add a duplicate edge.  ignoring .  Edge was " + edge);
-			return;
+			return true;
 		}
 		param.put("ID_OUT", Integer.parseInt(outv_id));
 		param.put("ID_IN", Integer.parseInt(inv_id));
@@ -359,9 +390,33 @@ public class DBConnection {
 			props.put(key, edge.get(key));
 			//	System.out.println(key);
 		}
+		
+		//and now finally add edge to graph.  If it fails, return false here. if it was ok, then we can continue below.
 		param.put("EDGE_PROPS", props);
-		//and now finally add edge to graph
-		execute("g.addEdge(g.v(ID_OUT),g.v(ID_IN),LABEL,EDGE_PROPS)", param);
+		ret = execute("g.addEdge(g.v(ID_OUT),g.v(ID_IN),LABEL,EDGE_PROPS)", param);
+		if(ret == false){ 
+			return ret;
+		}
+		
+		//confirm before proceeding
+		try{
+			ret = false;
+			//commit();
+			int tryCount = 0;
+			//Confirm before proceeding
+			while(ret == false && tryCount < TRY_LIMIT){
+				//System.out.println("waiting for " + tryCount + " seconds in addEdgeFromJSON()");
+				waitFor(1000*tryCount + 1);
+				if( getEdgeCount(inv_id, outv_id, label) >= 1){
+					ret = true;
+				}
+			}
+		}catch(Exception e){
+			logger.warn(e.getLocalizedMessage());
+			logger.warn(getStackTrace(e));
+			ret = false;
+		}
+		return ret;
 	}
 
 	public void commit(){
@@ -386,12 +441,14 @@ public class DBConnection {
 		} catch (RexProException e) {
 			logger.error("'execute' method encountered a rexpro problem");
 			logger.error("this query was: " + query + " params were: " + params);
-			logger.error("Exception!",e);
+			logger.error("Exception!",e.getLocalizedMessage());
+			logger.error(getStackTrace(e));
 			return false;
 		} catch (IOException e) {
 			logger.error("'execute' method encountered an IO problem ");
 			logger.error("this query was: " + query + " params were: " + params);
-			logger.error("Exception!",e);
+			logger.error("Exception!",e.getLocalizedMessage());
+			logger.error(getStackTrace(e));
 			return false;
 		}
 		return true;
@@ -415,13 +472,16 @@ public class DBConnection {
 			Map<String, Object> query_ret_map = query_ret_list.get(0);
 			return query_ret_map;
 		} catch (RexProException e) {
-			logger.error("Exception!",e);
+			logger.error("Exception!",e.getLocalizedMessage());
+			logger.error(getStackTrace(e));
 			return null;
 		} catch (IOException e) {
-			logger.error("Exception!",e);
+			logger.error("Exception!",e.getLocalizedMessage());
+			logger.error(getStackTrace(e));
 			return null;
 		} catch (ClassCastException e) {
-			logger.error("Exception!",e);
+			logger.error("Exception!",e.getLocalizedMessage());
+			logger.error(getStackTrace(e));
 			return null;
 		}
 	}
@@ -488,13 +548,16 @@ public class DBConnection {
 				}
 				return id;
 			}catch(RexProException e){
-				logger.warn("RexProException in findVertID (with name: " + name + " )", e);
+				logger.error("RexProException in findVertID (with name: " + name + " )", e.getLocalizedMessage());
+				logger.error(getStackTrace(e));
 				return null;
 			}catch(NullPointerException e){
-				logger.error("NullPointerException in findVertID (with name: " + name + " )", e);
+				logger.error("NullPointerException in findVertID (with name: " + name + " )", e.getLocalizedMessage());
+				logger.error(getStackTrace(e));
 				return null;
 			}catch(IOException e){
-				logger.error("IOException in findVertID (with name: " + name + " )", e);
+				logger.error("IOException in findVertID (with name: " + name + " )", e.getLocalizedMessage());
+				logger.error(getStackTrace(e));
 				return null;
 			}
 		}
@@ -587,22 +650,24 @@ public class DBConnection {
 		try {
 			query_ret = client.execute("g.v(ID_OUT);", param);
 			if(query_ret == null){
-				logger.warn("edgesExist could not find out_id:" + outv_id);
+				logger.warn("getEdgeCount could not find out_id:" + outv_id);
 				return -1;
 			}
 			query_ret = client.execute("g.v(ID_IN);", param);
 			if(query_ret == null){
-				logger.warn("edgesExist could not find inv_id:" + inv_id);
+				logger.warn("getEdgeCount could not find inv_id:" + inv_id);
 				return -1;
 			}
 			query_ret = client.execute("g.v(ID_OUT).outE(LABEL).inV();", param);
 		} catch (RexProException e) {
-			logger.error("edgesExist RexProException for args:" + outv_id + ", " + label + ", " + inv_id);
-			e.printStackTrace();
+			logger.error("getEdgeCount RexProException for args:" + outv_id + ", " + label + ", " + inv_id);
+			logger.error(e.getLocalizedMessage());
+			logger.error(getStackTrace(e));
 			return -1;
 		} catch (IOException e) {
-			logger.error("edgesExist IOException for args:" + outv_id + ", " + label + ", " + inv_id);
-			e.printStackTrace();
+			logger.error("getEdgeCount IOException for args:" + outv_id + ", " + label + ", " + inv_id);
+			logger.error(e.getLocalizedMessage());
+			logger.error(getStackTrace(e));
 			return -1;
 		}
 		List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
@@ -702,6 +767,7 @@ public class DBConnection {
 			}
 		}
 		commit();
+		//TODO: confirm before proceeding?
 		return ret;
 	}
 	
@@ -728,11 +794,11 @@ public class DBConnection {
 					cardinalityCache.put(key, cardinality);
 				}
 			} catch (RexProException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+				logger.warn(e.getLocalizedMessage());
+				logger.warn(getStackTrace(e));
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+				logger.warn(e.getLocalizedMessage());
+				logger.warn(getStackTrace(e));
 			}
 		}
 		return cardinality;
@@ -790,12 +856,42 @@ public class DBConnection {
 		}
 		try{
 			commit();
+			int tryCount = 0;
+			List<Object> queryRet;
+			//Confirm before proceeding
+			while(ret == false && tryCount < TRY_LIMIT){
+				//System.out.println("waiting for " + tryCount + " seconds in removeAllVertices()");
+				waitFor(1000*tryCount +1);
+				queryRet = client.execute("g.V.count();");
+				if( (Long)queryRet.get(0) == 0){
+					ret = true;
+				}
+			}
 		}catch(Exception e){
-			e.printStackTrace();
+			logger.warn(e.getLocalizedMessage());
+			logger.warn(getStackTrace(e));
 			ret = false;
 		}
 		return ret;
 	}
+	
+	private void waitFor(int ms){
+		try {
+			Thread.sleep(ms);
+		}
+		catch (InterruptedException ie) { 
+			// Restore the interrupted status
+			Thread.currentThread().interrupt();
+		}
+	}
+	
+	private static String getStackTrace(Exception e){
+		StringWriter sw = new StringWriter();
+		PrintWriter pw = new PrintWriter(sw);
+		e.printStackTrace(pw);
+		return sw.toString();
+	}
+	
 	//see Align class
 	public List<Object> jsonArrayToList(JSONArray a){
 		List<Object> l = new ArrayList<Object>();
