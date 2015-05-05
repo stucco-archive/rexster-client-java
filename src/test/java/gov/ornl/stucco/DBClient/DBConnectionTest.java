@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.commons.configuration.Configuration;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import com.tinkerpop.rexster.client.RexProException;
@@ -70,8 +71,11 @@ extends TestCase
 
 	/**
 	 * Tests loading, querying, and other basic operations for vertices, edges, properties.
+	 * @throws IOException 
+	 * @throws RexProException 
+	 * @throws JSONException 
 	 */
-	public void testLoad()
+	public void testLoad() throws JSONException, RexProException, IOException
 	{
 		DBConnection c = null;
 		try{
@@ -188,9 +192,11 @@ extends TestCase
 
 	/**
 	 * Tests updating vertex properties
+	 * @throws IOException 
+	 * @throws RexProException 
 	 */
 
-	public void testUpdate()
+	public void testUpdate() throws RexProException, IOException
 	{
 		DBConnection c = null;
 		try{

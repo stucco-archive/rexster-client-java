@@ -49,14 +49,14 @@ public class DBConnection {
 	private String dbType = null;
 	private static int TRY_LIMIT = 10;
 
-	public static RexsterClient createClient(Configuration configOpts){
+	public static RexsterClient createClient(Configuration configOpts) throws IOException{
 		return createClient(configOpts, 0);
 	}
 
 	/*
 	 * Note that connectionWaitTime is in seconds
 	 */
-	public static RexsterClient createClient(Configuration configOpts, int connectionWaitTime){
+	public static RexsterClient createClient(Configuration configOpts, int connectionWaitTime) throws IOException{
 		RexsterClient client = null;
 		Logger logger = LoggerFactory.getLogger(DBConnection.class);
 
@@ -67,6 +67,7 @@ public class DBConnection {
 		} catch (Exception e) {
 			logger.warn(e.getLocalizedMessage());
 			logger.warn(getStackTrace(e));
+			throw new IOException("could not create rexster client connection");
 		}
 
 		//if wait time given, then wait that long, so the connection can set up.  (Mostly needed for travis-ci tests)
@@ -110,7 +111,7 @@ public class DBConnection {
 		}
 	}
 
-	public DBConnection(){
+	public DBConnection() throws IOException{
 		this(createClient(getDefaultConfig()));
 	}
 
@@ -122,28 +123,28 @@ public class DBConnection {
 		client = c;
 	}
 
-	private String getDBType(){
+	private String getDBType() throws IOException{
 		if(this.dbType == null){
 			String type = null;
 			try{
 				type = client.execute("g.getClass()").get(0).toString();
 			}catch(Exception e){
 				logger.error("Could not find graph type!",e);
+				throw new IOException("Could not find graph type!");
 			}
 			if( type.equals("class com.tinkerpop.blueprints.impls.tg.TinkerGraph") ){
 				this.dbType = "TinkerGraph";
 			}else if( type.equals("class com.thinkaurelius.titan.graphdb.database.StandardTitanGraph") ){
 				this.dbType = "TitanGraph";
 			}else{
-				logger.warn("Could not find graph type, or unknown type!  Assuming it is Titan...");
-				this.dbType = "TitanGraph";
+				throw new IOException("Could not find graph type - unknown type!");
 			}
 		}
 		return this.dbType;
 	}
 
 
-	public void createIndices(){
+	public void createIndices() throws IOException{
 		String graphType = getDBType();
 		if( graphType.equals("TinkerGraph") ){
 			createTinkerGraphIndices();
@@ -277,11 +278,11 @@ public class DBConnection {
 		 */
 	}
 
-	public boolean addVertexFromJSON(JSONObject vert){
+	public boolean addVertexFromJSON(JSONObject vert) throws RexProException, IOException{
 		return addVertexFromMap(jsonVertToMap(vert));
 	}
 
-	public boolean addVertexFromMap(Map<String, Object> vert){
+	public boolean addVertexFromMap(Map<String, Object> vert) throws RexProException, IOException{
 		boolean ret = false;
 		Long newID = null;
 		String graphType = getDBType();
@@ -306,51 +307,36 @@ public class DBConnection {
 		Map<String, Object> param = new HashMap<String, Object>();
 		param.put("VERT_PROPS", vert);
 		
-		try {
-			if(graphType == "TitanGraph")
-				newID = (Long)client.execute("v = g.addVertex(null, VERT_PROPS);v.getId();", param).get(0);
-			//newID = (Long)client.execute("v = GraphSONUtility.vertexFromJson(VERT_PROPS, new GraphElementFactory(g), GraphSONMode.NORMAL, null);v.getId()", param).get(0);
-			if(graphType == "TinkerGraph")
-				newID = Long.parseLong((String)client.execute("v = g.addVertex(null, VERT_PROPS);v.getId();", param).get(0));
-			//newID = Long.parseLong((String)client.execute("v = GraphSONUtility.vertexFromJson(VERT_PROPS, new GraphElementFactory(g), GraphSONMode.NORMAL, null);v.getId()", param).get(0));
-			//System.out.println("new ID is: " + newID);
-			vertIDCache.put(name, newID.toString());
-			//handling the non-"SINGLE" cardinality properties now.
-			for(String key : specialCardProps.keySet()){
-				updateVertProperty(newID.toString(), key, specialCardProps.get(key));
-			}
-		} catch (RexProException e) {
-			logger.warn(e.getLocalizedMessage());
-			logger.warn(getStackTrace(e));
-			return false;
-		} catch (IOException e) {
-			logger.warn(e.getLocalizedMessage());
-			logger.warn(getStackTrace(e));
-			return false;
+		if(graphType == "TitanGraph")
+			newID = (Long)client.execute("v = g.addVertex(null, VERT_PROPS);v.getId();", param).get(0);
+		//newID = (Long)client.execute("v = GraphSONUtility.vertexFromJson(VERT_PROPS, new GraphElementFactory(g), GraphSONMode.NORMAL, null);v.getId()", param).get(0);
+		if(graphType == "TinkerGraph")
+			newID = Long.parseLong((String)client.execute("v = g.addVertex(null, VERT_PROPS);v.getId();", param).get(0));
+		//newID = Long.parseLong((String)client.execute("v = GraphSONUtility.vertexFromJson(VERT_PROPS, new GraphElementFactory(g), GraphSONMode.NORMAL, null);v.getId()", param).get(0));
+		//System.out.println("new ID is: " + newID);
+		vertIDCache.put(name, newID.toString());
+		//handling the non-"SINGLE" cardinality properties now.
+		for(String key : specialCardProps.keySet()){
+			updateVertProperty(newID.toString(), key, specialCardProps.get(key));
 		}
 		
 		//confirm before proceeding
-		try{
-			ret = false;
-			//commit();
-			int tryCount = 0;
-			//Confirm before proceeding
-			while(ret == false && tryCount < TRY_LIMIT){
-				//System.out.println("waiting for " + tryCount + " seconds in addVertexFromMap()");
-				waitFor(1000*tryCount + 1);
-				if( getVertByID(newID.toString()) != null && findVert(name) != null){
-					ret = true;
-				}
+		ret = false;
+		//commit();
+		int tryCount = 0;
+		//Confirm before proceeding
+		while(ret == false && tryCount < TRY_LIMIT){
+			//System.out.println("waiting for " + tryCount + " seconds in addVertexFromMap()");
+			waitFor(1000*tryCount + 1);
+			if( getVertByID(newID.toString()) != null && findVert(name) != null){
+				ret = true;
 			}
-		}catch(Exception e){
-			logger.warn(e.getLocalizedMessage());
-			logger.warn(getStackTrace(e));
-			ret = false;
 		}
+
 		return ret;
 	}
 
-	public boolean addEdgeFromJSON(JSONObject edge){
+	public boolean addEdgeFromJSON(JSONObject edge) throws RexProException, IOException{
 		boolean ret = false;
 		Map<String, Object> param = new HashMap<String, Object>();
 
@@ -399,27 +385,23 @@ public class DBConnection {
 		}
 		
 		//confirm before proceeding
-		try{
-			ret = false;
-			//commit();
-			int tryCount = 0;
-			//Confirm before proceeding
-			while(ret == false && tryCount < TRY_LIMIT){
-				//System.out.println("waiting for " + tryCount + " seconds in addEdgeFromJSON()");
-				waitFor(1000*tryCount + 1);
-				if( getEdgeCount(inv_id, outv_id, label) >= 1){
-					ret = true;
-				}
+		
+		ret = false;
+		//commit();
+		int tryCount = 0;
+		//Confirm before proceeding
+		while(ret == false && tryCount < TRY_LIMIT){
+			//System.out.println("waiting for " + tryCount + " seconds in addEdgeFromJSON()");
+			waitFor(1000*tryCount + 1);
+			if( getEdgeCount(inv_id, outv_id, label) >= 1){
+				ret = true;
 			}
-		}catch(Exception e){
-			logger.warn(e.getLocalizedMessage());
-			logger.warn(getStackTrace(e));
-			ret = false;
 		}
+		
 		return ret;
 	}
 
-	public void commit(){
+	public void commit() throws RexProException, IOException{
 		String graphType = getDBType();
 		if(graphType != "TinkerGraph")
 			execute("g.commit()");
@@ -429,32 +411,18 @@ public class DBConnection {
 	//wrapper to reduce boilerplate
 	//TODO wrapper throws away any return value, 
 	//  it'd be nice to use this even when we want the query's retval... but then we're back w/ exceptions & don't gain much.
-	public boolean execute(String query, Map<String,Object> params){
+	public boolean execute(String query, Map<String,Object> params) throws RexProException, IOException{
 		if(this.client == null)
 			return false;
-		try {
-			//Adding a trailing return 'g' on everything: 
-			// no execute() args can end up returning null, due to known API bug.
-			// returning 'g' everywhere is just the simplest workaround for it, since it is always defined.
-			query += ";g";
-			client.execute(query, params);
-		} catch (RexProException e) {
-			logger.error("'execute' method encountered a rexpro problem");
-			logger.error("this query was: " + query + " params were: " + params);
-			logger.error("Exception!",e.getLocalizedMessage());
-			logger.error(getStackTrace(e));
-			return false;
-		} catch (IOException e) {
-			logger.error("'execute' method encountered an IO problem ");
-			logger.error("this query was: " + query + " params were: " + params);
-			logger.error("Exception!",e.getLocalizedMessage());
-			logger.error(getStackTrace(e));
-			return false;
-		}
+		//Adding a trailing return 'g' on everything: 
+		// no execute() args can end up returning null, due to known API bug.
+		// returning 'g' everywhere is just the simplest workaround for it, since it is always defined.
+		query += ";g";
+		client.execute(query, params);
 		return true;
 	}
 	//likewise.
-	public boolean execute(String query){
+	public boolean execute(String query) throws RexProException, IOException{
 		return execute(query,null);
 	}
 
@@ -463,27 +431,13 @@ public class DBConnection {
 		return client;
 	}
 
-	public Map<String, Object> getVertByID(String id){
-		try {
-			Map<String, Object> param = new HashMap<String, Object>();
-			param.put("ID", Integer.parseInt(id));
-			Object query_ret = client.execute("g.v(ID).map();", param);
-			List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
-			Map<String, Object> query_ret_map = query_ret_list.get(0);
-			return query_ret_map;
-		} catch (RexProException e) {
-			logger.error("Exception!",e.getLocalizedMessage());
-			logger.error(getStackTrace(e));
-			return null;
-		} catch (IOException e) {
-			logger.error("Exception!",e.getLocalizedMessage());
-			logger.error(getStackTrace(e));
-			return null;
-		} catch (ClassCastException e) {
-			logger.error("Exception!",e.getLocalizedMessage());
-			logger.error(getStackTrace(e));
-			return null;
-		}
+	public Map<String, Object> getVertByID(String id) throws RexProException, IOException{
+		Map<String, Object> param = new HashMap<String, Object>();
+		param.put("ID", Integer.parseInt(id));
+		Object query_ret = client.execute("g.v(ID).map();", param);
+		List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
+		Map<String, Object> query_ret_map = query_ret_list.get(0);
+		return query_ret_map;
 	}
 
 	public Map<String,Object> findVert(String name) throws IOException, RexProException{
@@ -526,7 +480,7 @@ public class DBConnection {
 	 */
 
 	//function is searching vertIDCache first, if id is not in there, then it is calling the findVert funciton
-	public String findVertId(String name){
+	public String findVertId(String name) throws IOException, RexProException{
 		String id = vertIDCache.get(name);
 
 		//  	for (String key: vertIDCache.keySet()){
@@ -536,30 +490,16 @@ public class DBConnection {
 		if(id != null){
 			return id;
 		}else{
-			try{
-				Map<String, Object> vert = findVert(name);
-				if(vert == null) 
-					id = null;
-				else 
-					id = (String)vert.get("_id");
-				if(id != null){
-					//TODO cache eviction, and/or limit caching by vert type.  But until vertex count gets higher, it won't matter much.
-					vertIDCache.put(name, id);
-				}
-				return id;
-			}catch(RexProException e){
-				logger.error("RexProException in findVertID (with name: " + name + " )", e.getLocalizedMessage());
-				logger.error(getStackTrace(e));
-				return null;
-			}catch(NullPointerException e){
-				logger.error("NullPointerException in findVertID (with name: " + name + " )", e.getLocalizedMessage());
-				logger.error(getStackTrace(e));
-				return null;
-			}catch(IOException e){
-				logger.error("IOException in findVertID (with name: " + name + " )", e.getLocalizedMessage());
-				logger.error(getStackTrace(e));
-				return null;
+			Map<String, Object> vert = findVert(name);
+			if(vert == null) 
+				id = null;
+			else 
+				id = (String)vert.get("_id");
+			if(id != null){
+				//TODO cache eviction, and/or limit caching by vert type.  But until vertex count gets higher, it won't matter much.
+				vertIDCache.put(name, id);
 			}
+			return id;
 		}
 	}
 
@@ -630,14 +570,14 @@ public class DBConnection {
 	 * @deprecated use getEdgeCount instead
 	 */
 	@Deprecated
-	public boolean edgeExists(String inv_id, String outv_id, String label) {
+	public boolean edgeExists(String inv_id, String outv_id, String label) throws RexProException, IOException {
 		return (getEdgeCount(inv_id, outv_id, label) > 0);
 	}
 	
 	/*
 	 * returns edge count, or -1 if IDs not found, or ifother error occurred.
 	 */
-	public int getEdgeCount(String inv_id, String outv_id, String label) {
+	public int getEdgeCount(String inv_id, String outv_id, String label) throws RexProException, IOException {
 		int edgeCount = 0;
 		if(inv_id == null || inv_id == "" || outv_id == null || outv_id == "" || label == null || label == "")
 			return -1;
@@ -647,29 +587,19 @@ public class DBConnection {
 		param.put("ID_IN", Integer.parseInt(inv_id));
 		param.put("LABEL", label);
 		Object query_ret;
-		try {
-			query_ret = client.execute("g.v(ID_OUT);", param);
-			if(query_ret == null){
-				logger.warn("getEdgeCount could not find out_id:" + outv_id);
-				return -1;
-			}
-			query_ret = client.execute("g.v(ID_IN);", param);
-			if(query_ret == null){
-				logger.warn("getEdgeCount could not find inv_id:" + inv_id);
-				return -1;
-			}
-			query_ret = client.execute("g.v(ID_OUT).outE(LABEL).inV();", param);
-		} catch (RexProException e) {
-			logger.error("getEdgeCount RexProException for args:" + outv_id + ", " + label + ", " + inv_id);
-			logger.error(e.getLocalizedMessage());
-			logger.error(getStackTrace(e));
-			return -1;
-		} catch (IOException e) {
-			logger.error("getEdgeCount IOException for args:" + outv_id + ", " + label + ", " + inv_id);
-			logger.error(e.getLocalizedMessage());
-			logger.error(getStackTrace(e));
+		
+		query_ret = client.execute("g.v(ID_OUT);", param);
+		if(query_ret == null){
+			logger.warn("getEdgeCount could not find out_id:" + outv_id);
 			return -1;
 		}
+		query_ret = client.execute("g.v(ID_IN);", param);
+		if(query_ret == null){
+			logger.warn("getEdgeCount could not find inv_id:" + inv_id);
+			return -1;
+		}
+		query_ret = client.execute("g.v(ID_OUT).outE(LABEL).inV();", param);
+		
 		List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
 		//logger.info("query returned: " + query_ret_list);
 		for(Map<String, Object> item : query_ret_list){
@@ -680,14 +610,14 @@ public class DBConnection {
 		return edgeCount;
 	}
 
-	public void updateVert(String id, Map<String, Object> props){
+	public void updateVert(String id, Map<String, Object> props) throws RexProException, IOException{
 		String[] keys = props.keySet().toArray(new String[0]);
 		for(int i=0; i<keys.length; i++){
 			updateVertProperty(id, keys[i], props.get(keys[i]));
 		}
 	}
 
-	public boolean updateVertProperty(String id, String key, Object val){
+	public boolean updateVertProperty(String id, String key, Object val) throws RexProException, IOException{
 		boolean ret = false;
 		HashMap<String, Object> param = new HashMap<String, Object>();
 
@@ -774,31 +704,24 @@ public class DBConnection {
 	/*
 	 * returns cardinality of property "key".  If not found, returns null.
 	 */
-	public String findCardinality(String key){
+	public String findCardinality(String key) throws RexProException, IOException{
 		String cardinality;
 
 		cardinality = cardinalityCache.get(key);
 		if(cardinality == null){
 			List<Object> queryRet;
-			try {
-				String query = "mgmt=g.getManagementSystem();mgmt.getPropertyKey('" + key + "')";
+
+			String query = "mgmt=g.getManagementSystem();mgmt.getPropertyKey('" + key + "')";
+			queryRet = client.execute(query, null);
+			commit();
+			if(queryRet == null || queryRet.get(0) == null){
+				cardinality = null;
+			}else{
+				query = "mgmt=g.getManagementSystem();mgmt.getPropertyKey('" + key + "').cardinality";
 				queryRet = client.execute(query, null);
 				commit();
-				if(queryRet == null || queryRet.get(0) == null){
-					cardinality = null;
-				}else{
-					query = "mgmt=g.getManagementSystem();mgmt.getPropertyKey('" + key + "').cardinality";
-					queryRet = client.execute(query, null);
-					commit();
-					cardinality = (String)queryRet.get(0);
-					cardinalityCache.put(key, cardinality);
-				}
-			} catch (RexProException e) {
-				logger.warn(e.getLocalizedMessage());
-				logger.warn(getStackTrace(e));
-			} catch (IOException e) {
-				logger.warn(e.getLocalizedMessage());
-				logger.warn(getStackTrace(e));
+				cardinality = (String)queryRet.get(0);
+				cardinalityCache.put(key, cardinality);
 			}
 		}
 		return cardinality;
