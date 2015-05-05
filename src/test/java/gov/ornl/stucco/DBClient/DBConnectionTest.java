@@ -120,7 +120,6 @@ extends TestCase
 				"}";
 		c.addVertexFromJSON(new JSONObject(vert1));
 		c.addVertexFromJSON(new JSONObject(vert2));
-		c.commit();
 		
 		try {
 			//find this node, check some properties.
@@ -161,7 +160,6 @@ extends TestCase
 				"\"description\":\"some_description\""+
 				"}";
 		c.addEdgeFromJSON(new JSONObject(edge));
-		c.commit();
 
 		try {
 			
@@ -217,14 +215,11 @@ extends TestCase
 		
 		Map<String, Object> props = new HashMap<String,Object>();
 		props.put("NAME", "testvert_55");
-		c.commit();
-		c.execute("v = g.addVertex();v.setProperty(\"endIPInt\",55);v.addProperty(\"source\",\"aaaa\");v.setProperty(\"name\",NAME)", props);
-		c.commit();
+		c.execute("v = g.addVertex();v.setProperty(\"endIPInt\",55);v.addProperty(\"source\",\"aaaa\");v.setProperty(\"name\",NAME);g.commit()", props);
 		
 		String id = c.findVertId("testvert_55");
 		
 		c.updateVertProperty(id, "source", "aaaa");
-		c.commit();
 		
 		Map<String, Object> query_ret_map = c.getVertByID(id);
 		assertEquals( "55", query_ret_map.get("endIPInt").toString());
@@ -235,7 +230,6 @@ extends TestCase
 		newProps.put("endIPInt", "44");
 		newProps.put("source", "bbbb");
 		c.updateVert(id, newProps);
-		c.commit();
 
 		query_ret_map = c.getVertByID(id);
 		assertEquals("33", query_ret_map.get("startIPInt").toString());
@@ -247,7 +241,6 @@ extends TestCase
 		String[] sourceArray = {"cccc", "dddd"};
 		newProps.put("source", sourceArray);
 		c.updateVert(id, newProps);
-		c.commit();
 
 		query_ret_map = c.getVertByID(id);
 		assertEquals("[aaaa, bbbb, cccc, dddd]", query_ret_map.get("source").toString());
@@ -258,7 +251,6 @@ extends TestCase
 		sourceSet.add("ffff");
 		newProps.put("source", sourceSet);
 		c.updateVert(id, newProps);
-		c.commit();
 
 		query_ret_map = c.getVertByID(id);
 		assertEquals("[aaaa, bbbb, cccc, dddd, eeee, ffff]", query_ret_map.get("source").toString());
@@ -269,7 +261,6 @@ extends TestCase
 		sourceList.add("hhhh");
 		newProps.put("source", sourceList);
 		c.updateVert(id, newProps);
-		c.commit();
 
 		query_ret_map = c.getVertByID(id);
 		assertEquals("[aaaa, bbbb, cccc, dddd, eeee, ffff, gggg, hhhh]", query_ret_map.get("source").toString());
@@ -278,7 +269,6 @@ extends TestCase
 		String[] sourceArr = new String[]{"gggg", "hhhh"};
 		newProps.put("source", sourceArr);
 		c.updateVert(id, newProps);
-		c.commit();
 
 		query_ret_map = c.getVertByID(id);
 		assertEquals("[aaaa, bbbb, cccc, dddd, eeee, ffff, gggg, hhhh]", query_ret_map.get("source").toString());

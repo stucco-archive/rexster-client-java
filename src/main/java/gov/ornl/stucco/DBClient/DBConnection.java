@@ -47,7 +47,8 @@ public class DBConnection {
 	private Map<String, String> vertIDCache = null;
 	private Map<String, String> cardinalityCache = null;
 	private String dbType = null;
-	private static int TRY_LIMIT = 10;
+	private static int WRITE_CONFIRM_TRY_LIMIT = 10;
+	private static int COMMIT_TRY_LIMIT = 4;
 
 	public static RexsterClient createClient(Configuration configOpts) throws IOException{
 		return createClient(configOpts, 0);
@@ -322,10 +323,10 @@ public class DBConnection {
 		
 		//confirm before proceeding
 		ret = false;
-		//commit();
+		tryCommit(COMMIT_TRY_LIMIT);
 		int tryCount = 0;
 		//Confirm before proceeding
-		while(ret == false && tryCount < TRY_LIMIT){
+		while(ret == false && tryCount < WRITE_CONFIRM_TRY_LIMIT){
 			//System.out.println("waiting for " + tryCount + " seconds in addVertexFromMap()");
 			waitFor(1000*tryCount + 1);
 			if( getVertByID(newID.toString()) != null && findVert(name) != null){
@@ -387,10 +388,10 @@ public class DBConnection {
 		//confirm before proceeding
 		
 		ret = false;
-		//commit();
+		tryCommit(COMMIT_TRY_LIMIT);
 		int tryCount = 0;
 		//Confirm before proceeding
-		while(ret == false && tryCount < TRY_LIMIT){
+		while(ret == false && tryCount < WRITE_CONFIRM_TRY_LIMIT){
 			//System.out.println("waiting for " + tryCount + " seconds in addEdgeFromJSON()");
 			waitFor(1000*tryCount + 1);
 			if( getEdgeCount(inv_id, outv_id, label) >= 1){
@@ -401,10 +402,30 @@ public class DBConnection {
 		return ret;
 	}
 
-	public void commit() throws RexProException, IOException{
+	private void commit() throws RexProException, IOException{
 		String graphType = getDBType();
 		if(graphType != "TinkerGraph")
 			execute("g.commit()");
+	}
+	
+	//tries to commit, returns true if success.
+	private boolean tryCommit(){
+		try{
+			commit();
+		}catch(Exception e){
+			return false;
+		}
+		return true;
+	}
+	
+	//tries to commit, up to 'limit' times. returns true if success.
+	private boolean tryCommit(int limit){
+		int count = 0;
+		boolean result = false;
+		while(!result && count < limit){
+			result = tryCommit();
+		}
+		return result;
 	}
 
 	//TODO make private
@@ -696,7 +717,7 @@ public class DBConnection {
 				}
 			}
 		}
-		commit();
+		tryCommit(COMMIT_TRY_LIMIT);
 		//TODO: confirm before proceeding?
 		return ret;
 	}
@@ -713,13 +734,11 @@ public class DBConnection {
 
 			String query = "mgmt=g.getManagementSystem();mgmt.getPropertyKey('" + key + "')";
 			queryRet = client.execute(query, null);
-			commit();
 			if(queryRet == null || queryRet.get(0) == null){
 				cardinality = null;
 			}else{
 				query = "mgmt=g.getManagementSystem();mgmt.getPropertyKey('" + key + "').cardinality";
 				queryRet = client.execute(query, null);
-				commit();
 				cardinality = (String)queryRet.get(0);
 				cardinalityCache.put(key, cardinality);
 			}
@@ -750,11 +769,8 @@ public class DBConnection {
 				ret = false;
 			}
 		}
-		try{
-			commit();
-		}catch(Exception e){
-			e.printStackTrace();
-			ret = false;
+		if(ret){
+			ret = tryCommit(COMMIT_TRY_LIMIT);
 		}
 
 		//clear the cache now.
@@ -778,13 +794,13 @@ public class DBConnection {
 			ret = false;
 		}
 		try{
-			commit();
 			int tryCount = 0;
 			List<Object> queryRet;
 			//Confirm before proceeding
-			while(ret == false && tryCount < TRY_LIMIT){
+			while(ret == false && tryCount < WRITE_CONFIRM_TRY_LIMIT){
 				//System.out.println("waiting for " + tryCount + " seconds in removeAllVertices()");
 				waitFor(1000*tryCount +1);
+				commit();
 				queryRet = client.execute("g.V.count();");
 				if( (Long)queryRet.get(0) == 0){
 					ret = true;
