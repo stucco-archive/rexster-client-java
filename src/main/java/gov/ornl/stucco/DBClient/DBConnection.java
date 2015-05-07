@@ -348,18 +348,19 @@ public class DBConnection {
 		//System.out.println("ID = " + edgeName);
 		//String edgeID = findEdgeId(edgeName);
 		if(outv_id == null){
-			logger.error("Could not find out_v for edge: " + edge);
+			//logger.error("Could not find out_v for edge: " + edge);
 			return false;
 		}
 		if(inv_id == null){
-			logger.error("Could not find in_v for edge: " + edge);
+			//logger.error("Could not find in_v for edge: " + edge);
 			return false;
 		}
 		String label = edge.optString("_label");
 		if(getEdgeCount(inv_id, outv_id, label) >= 1){
-			//TODO need to merge edge props for this case, like verts above...
-			logger.debug("Attempted to add a duplicate edge.  ignoring .  Edge was " + edge);
-			return true;
+			//edge already exists, do nothing and return false.
+			// (if you wanted to update its properties, this is not the method for that)
+			//logger.debug("Attempted to add a duplicate edge.  ignoring .  Edge was " + edge);
+			return false;
 		}
 		param.put("ID_OUT", Integer.parseInt(outv_id));
 		param.put("ID_IN", Integer.parseInt(inv_id));
@@ -721,6 +722,21 @@ public class DBConnection {
 		//TODO: confirm before proceeding?
 		return ret;
 	}
+	
+	/*
+	public void updateEdge(String id, Map<String, Object> props) throws RexProException, IOException{
+		String[] keys = props.keySet().toArray(new String[0]);
+		for(int i=0; i<keys.length; i++){
+			updateEdgeProperty(id, keys[i], props.get(keys[i]));
+		}
+	}
+
+	//TODO
+	public boolean updateEdgeProperty(String id, String key, Object val) throws RexProException, IOException{
+		boolean ret = false;
+		return ret;
+	}
+	*/
 	
 	/*
 	 * returns cardinality of property "key".  If not found, returns null.
