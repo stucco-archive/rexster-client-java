@@ -44,7 +44,9 @@ public class DBConnection {
 
 	private RexsterClient client = null;
 	private Logger logger = null;
-	private Map<String, String> vertIDCache = null;
+	private Map<String, String> vertIDCache = null; //TODO could really split this into a simple cache class.
+	private Set<String> vertIDCacheRecentlyRead = null;
+	private static int VERT_ID_CACHE_LIMIT = 10000;
 	private Map<String, String> cardinalityCache = null;
 	private String dbType = null;
 	private static int WRITE_CONFIRM_TRY_LIMIT = 10;
@@ -119,7 +121,8 @@ public class DBConnection {
 	public DBConnection(RexsterClient c){
 		//TODO
 		logger = LoggerFactory.getLogger(DBConnection.class);
-		vertIDCache = new HashMap<String, String>(10000);
+		vertIDCache = new HashMap<String, String>(VERT_ID_CACHE_LIMIT);
+		vertIDCacheRecentlyRead = new HashSet<String>(VERT_ID_CACHE_LIMIT);
 		cardinalityCache = new HashMap<String, String>(200);
 		client = c;
 	}
@@ -315,7 +318,7 @@ public class DBConnection {
 			newID = Long.parseLong((String)client.execute("v = g.addVertex(null, VERT_PROPS);v.getId();", param).get(0));
 		//newID = Long.parseLong((String)client.execute("v = GraphSONUtility.vertexFromJson(VERT_PROPS, new GraphElementFactory(g), GraphSONMode.NORMAL, null);v.getId()", param).get(0));
 		//System.out.println("new ID is: " + newID);
-		vertIDCache.put(name, newID.toString());
+		vertIDCachePut(name, newID.toString());
 		//handling the non-"SINGLE" cardinality properties now.
 		for(String key : specialCardProps.keySet()){
 			updateVertProperty(newID.toString(), key, specialCardProps.get(key));
@@ -504,14 +507,9 @@ public class DBConnection {
     }
 	 */
 
-	//function is searching vertIDCache first, if id is not in there, then it is calling the findVert funciton
+	//function will check vertIDCache first, if id is not in there, then it is calling the findVert funciton
 	public String findVertId(String name) throws IOException, RexProException{
-		String id = vertIDCache.get(name);
-
-		//  	for (String key: vertIDCache.keySet()){
-		//  		System.out.println("key = " + key + " value = " + vertIDCache.get(key));
-		//  	}
-
+		String id = vertIDCacheGet(name);
 		if(id != null){
 			return id;
 		}else{
@@ -521,8 +519,7 @@ public class DBConnection {
 			else 
 				id = (String)vert.get("_id");
 			if(id != null){
-				//TODO cache eviction, and/or limit caching by vert type.  But until vertex count gets higher, it won't matter much.
-				vertIDCache.put(name, id);
+				vertIDCachePut(name, id);
 			}
 			return id;
 		}
@@ -567,29 +564,6 @@ public class DBConnection {
 
 		return query_ret_list;
 	}
-
-	/*
-    public String findEdgeId(String edgeName){
-    	String id = null;
-    	try{
-    		Map<String, Object> edge = findEdge(edgeName);
-    		if(edge == null) 
-    			id = null;
-    		else 
-    			id = (String)edge.get("_id");
-    		return id;
-    	}catch(RexProException e){
-    		logger.warn("RexProException in findEdgeId (with name: " + edgeName + " )", e);
-    		return null;
-    	}catch(NullPointerException e){
-    		logger.error("NullPointerException in findEdgeId (with name: " + edgeName + " )", e);
-    		return null;
-    	}catch(IOException e){
-    		logger.error("IOException in findEdgeId (with name: " + edgeName + " )", e);
-    		return null;
-    	}
-    }
-	 */
 
 	/*
 	 * @deprecated use getEdgeCount instead
@@ -779,6 +753,25 @@ public class DBConnection {
 		return cardinality;
 	}
 
+	private void vertIDCachePut(String name, String id){
+		if(vertIDCache.size() >= VERT_ID_CACHE_LIMIT){
+			logger.info("vertex id cache exceeded limit of " + VERT_ID_CACHE_LIMIT + 
+					" ... evicting " + (vertIDCache.size() - vertIDCacheRecentlyRead.size()) + " unused items.");
+			Map<String, String> newVertIDCache = new HashMap<String, String>(VERT_ID_CACHE_LIMIT);
+			for(String n : vertIDCacheRecentlyRead){
+				newVertIDCache.put(n, vertIDCache.get(n));
+			}
+			vertIDCacheRecentlyRead = new HashSet<String>(VERT_ID_CACHE_LIMIT);
+			vertIDCache = newVertIDCache;
+		}
+		vertIDCache.put(name, id);
+	}
+	
+	private String vertIDCacheGet(String name){
+		vertIDCacheRecentlyRead.add(name);
+		return vertIDCache.get(name);
+	}
+	
 	/*
 	 * Only used by removeAllVertices()
 	 */
@@ -807,7 +800,8 @@ public class DBConnection {
 		}
 
 		//clear the cache now.
-		vertIDCache = new HashMap<String, String>(10000);
+		vertIDCache = new HashMap<String, String>(VERT_ID_CACHE_LIMIT);
+		vertIDCacheRecentlyRead = new HashSet<String>(VERT_ID_CACHE_LIMIT);
 
 		return ret;
 
