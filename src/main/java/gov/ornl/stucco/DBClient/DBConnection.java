@@ -623,16 +623,30 @@ public class DBConnection {
 			logger.warn("getEdgeCount could not find inv_id:" + inv_id);
 			return -1;
 		}
-		query_ret = client.execute("g.v(ID_OUT).outE(LABEL).inV();", param);
+		int inVDegree, outVDegree;
+		query_ret = client.execute("g.v(ID_IN).out.count();", param);
+		inVDegree = ((List<Long>)query_ret).get(0).intValue();
+		query_ret = client.execute("g.v(ID_OUT).in.count();", param);
+		outVDegree = ((List<Long>)query_ret).get(0).intValue();
+		//logger.debug("inVDegree is " + inVDegree + " outVDegree is " + outVDegree);
 		
-		List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
-		//logger.info("query returned: " + query_ret_list);
-		for(Map<String, Object> item : query_ret_list){
-			if(Integer.parseInt(inv_id) == Integer.parseInt((String)item.get("_id")))
-				edgeCount++;
+		if(outVDegree < inVDegree){
+			query_ret = client.execute("g.v(ID_OUT).outE(LABEL).inV();", param);
+			List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
+			for(Map<String, Object> item : query_ret_list){
+				if(Integer.parseInt(inv_id) == Integer.parseInt((String)item.get("_id")))
+					edgeCount++;
+			}
+			return edgeCount;
+		}else{
+			query_ret = client.execute("g.v(ID_IN).inE(LABEL).outV();", param);
+			List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
+			for(Map<String, Object> item : query_ret_list){
+				if(Integer.parseInt(outv_id) == Integer.parseInt((String)item.get("_id")))
+					edgeCount++;
+			}
+			return edgeCount;
 		}
-		//logger.info("matching edge not found");
-		return edgeCount;
 	}
 
 	public void updateVert(String id, Map<String, Object> props) throws RexProException, IOException{
