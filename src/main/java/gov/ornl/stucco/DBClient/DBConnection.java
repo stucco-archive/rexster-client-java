@@ -332,6 +332,7 @@ public class DBConnection {
 			if( getVertByID(newID.toString()) != null && findVert(name) != null){
 				ret = true;
 			}
+			tryCount += 1;
 		}
 
 		return ret;
@@ -398,6 +399,7 @@ public class DBConnection {
 			if( getEdgeCount(inv_id, outv_id, label) >= 1){
 				ret = true;
 			}
+			tryCount += 1;
 		}
 		
 		return ret;
@@ -425,6 +427,7 @@ public class DBConnection {
 		boolean result = false;
 		while(!result && count < limit){
 			result = tryCommit();
+			count += 1;
 		}
 		return result;
 	}
@@ -821,6 +824,7 @@ public class DBConnection {
 				if( (Long)queryRet.get(0) == 0){
 					ret = true;
 				}
+				tryCount += 1;
 			}
 		}catch(Exception e){
 			logger.warn(e.getLocalizedMessage());
