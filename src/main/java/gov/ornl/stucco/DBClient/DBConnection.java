@@ -51,6 +51,8 @@ public class DBConnection {
 	private String dbType = null;
 	private static int WRITE_CONFIRM_TRY_LIMIT = 10;
 	private static int COMMIT_TRY_LIMIT = 4;
+	private static String[] HIGH_FORWARD_DEGREE_EDGE_LABELS = {"hasFlow"}; //TODO: update as needed.  Knowing these allows some queries to be optimized.
+	private static String[] HIGH_REVERSE_DEGREE_EDGE_LABELS = {"hasIP", "hasPort", "hasVulnerability", "inAddressRange"}; //TODO: like above, but currently unused (because most queries don't care about the reverse degree).
 
 	public static RexsterClient createClient(Configuration configOpts) throws IOException{
 		return createClient(configOpts, 0);
@@ -360,6 +362,7 @@ public class DBConnection {
 			return false;
 		}
 		String label = edge.optString("_label");
+		//System.out.println("confirming edge was not previously added");
 		if(getEdgeCount(inv_id, outv_id, label) >= 1){
 			//edge already exists, do nothing and return false.
 			// (if you wanted to update its properties, this is not the method for that)
@@ -399,6 +402,7 @@ public class DBConnection {
 		while(ret == false && tryCount < WRITE_CONFIRM_TRY_LIMIT){
 			//System.out.println("waiting for " + tryCount + " seconds in addEdgeFromJSON()");
 			waitFor(1000*tryCount + 1);
+			//System.out.println("confirming edge was added: attempt " + tryCount);
 			if( getEdgeCount(inv_id, outv_id, label) >= 1){
 				ret = true;
 			}
@@ -574,7 +578,7 @@ public class DBConnection {
 	}
 	
 	/*
-	 * returns edge count, or -1 if IDs not found, or ifother error occurred.
+	 * returns edge count, or -1 if IDs not found. Throws exceptions if other error occurred.
 	 */
 	public int getEdgeCount(String inv_id, String outv_id, String label) throws RexProException, IOException {
 		int edgeCount = 0;
@@ -586,7 +590,7 @@ public class DBConnection {
 		param.put("ID_IN", Integer.parseInt(inv_id));
 		param.put("LABEL", label);
 		Object query_ret;
-		
+
 		query_ret = client.execute("g.v(ID_OUT);", param);
 		if(query_ret == null){
 			logger.warn("getEdgeCount could not find out_id:" + outv_id);
@@ -597,16 +601,19 @@ public class DBConnection {
 			logger.warn("getEdgeCount could not find inv_id:" + inv_id);
 			return -1;
 		}
-		int inVDegree, outVDegree;
-		query_ret = client.execute("g.v(ID_IN).out.count();", param);
-		inVDegree = ((List<Long>)query_ret).get(0).intValue();
-		query_ret = client.execute("g.v(ID_OUT).in.count();", param);
-		outVDegree = ((List<Long>)query_ret).get(0).intValue();
-		//logger.debug("inVDegree is " + inVDegree + " outVDegree is " + outVDegree);
-		
-		if(outVDegree < inVDegree){
+
+		boolean highDegree = false;
+		for(String currLabel : HIGH_FORWARD_DEGREE_EDGE_LABELS){
+			if(label.equals(currLabel)){
+				highDegree = true;
+				break;
+			}
+		}
+
+		if(!highDegree){
 			query_ret = client.execute("g.v(ID_OUT).outE(LABEL).inV();", param);
 			List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
+			//System.out.println("query ret list contains " + query_ret_list.size() + " items.");
 			for(Map<String, Object> item : query_ret_list){
 				if(Integer.parseInt(inv_id) == Integer.parseInt((String)item.get("_id")))
 					edgeCount++;
@@ -615,6 +622,7 @@ public class DBConnection {
 		}else{
 			query_ret = client.execute("g.v(ID_IN).inE(LABEL).outV();", param);
 			List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
+			//System.out.println("query ret list contains " + query_ret_list.size() + " items.");
 			for(Map<String, Object> item : query_ret_list){
 				if(Integer.parseInt(outv_id) == Integer.parseInt((String)item.get("_id")))
 					edgeCount++;

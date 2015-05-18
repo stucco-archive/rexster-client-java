@@ -277,6 +277,247 @@ extends TestCase
 		//DBConnection.closeClient(this.client); //can close now, instead of waiting for finalize() to do it
 	}
 
+	/**
+	 * creates a vertex of high reverse degree, and one of low degree, and searches for the edge(s) between them.
+	 * @throws IOException 
+	 * @throws RexProException 
+	 * @throws JSONException 
+	 */
+	public void testHighForwardDegreeVerts() throws JSONException, RexProException, IOException
+	{
+		DBConnection c = null;
+		try{
+			Configuration config = DBConnection.getTestConfig();
+			RexsterClient client = DBConnection.createClient(config, WAIT_TIME);
+			List names = client.execute("mgmt = g.getManagementSystem();mgmt.getPropertyKey(\"source\");");
+			if(names.get(0) == null){
+				client.execute("mgmt = g.getManagementSystem();"
+					+ "name = mgmt.makePropertyKey(\"source\").dataType(String.class).cardinality(Cardinality.SET).make();"
+					+ "mgmt.commit();g;");
+			}
+			c = new DBConnection( client );
+			c.createIndices();
+		}catch(Exception e){
+			e.printStackTrace(); //TODO
+		} //the possible NPE below is fine, don't care if test errors.
+
+		c.removeAllVertices();
+
+		String vert1 = "{" +
+				"\"_id\":\"/usr/local/something\"," +
+				"\"_type\":\"vertex\","+
+				"\"source\":\"test\","+
+				"\"vertexType\":\"software\""+
+				"}";
+		String vert2 = "{" +
+				"\"_id\":\"11.11.11.11:1111_to_22.22.22.22:1\"," +
+				"\"_type\":\"vertex\","+
+				"\"source\":\"test\","+
+				"\"vertexType\":\"flow\""+
+				"}";
+		c.addVertexFromJSON(new JSONObject(vert1));
+		c.addVertexFromJSON(new JSONObject(vert2));
+
+		try {
+			//find node ids
+			String id = c.findVertId("/usr/local/something");
+			String id2 = c.findVertId("11.11.11.11:1111_to_22.22.22.22:1");
+
+			//There should be no edge between them
+			assertEquals(0, c.getEdgeCount(id, id2, "hasFlow")); //just to be sure.
+			assertEquals(0, c.getEdgeCount(id2, id, "hasFlow"));
+
+		} catch (RexProException e) {
+			fail("RexProException");
+			e.printStackTrace();
+		} catch (IOException e) {
+			fail("IOException");
+			e.printStackTrace();
+		}
+
+		String edge = "{"+ 
+				"\"_id\":\"/usr/local/something_hasFlow_11.11.11.11:1111_to_22.22.22.22:1\"," +
+				"\"_inV\":\"11.11.11.11:1111_to_22.22.22.22:1\"," +
+				"\"_outV\":\"/usr/local/something\"," +
+				"\"_label\":\"hasFlow\","+
+				"\"description\":\"test edge\""+
+				"}";
+		c.addEdgeFromJSON(new JSONObject(edge));
+
+		try {
+			//find node ids
+			String id = c.findVertId("/usr/local/something");
+			String id2 = c.findVertId("11.11.11.11:1111_to_22.22.22.22:1");
+
+			//There should be no edge between them
+			assertEquals(0, c.getEdgeCount(id, id2, "hasFlow")); //just to be sure.
+			assertEquals(1, c.getEdgeCount(id2, id, "hasFlow"));
+
+		} catch (RexProException e) {
+			fail("RexProException");
+			e.printStackTrace();
+		} catch (IOException e) {
+			fail("IOException");
+			e.printStackTrace();
+		}
+
+		for(int i=2; i<800; i++){
+			String currentVert = "{" +
+					"\"_id\":\"11.11.11.11:1111_to_22.22.22.22:" + i + "\"," +
+					"\"_type\":\"vertex\","+
+					"\"source\":\"test\","+
+					"\"vertexType\":\"flow\""+
+					"}";
+			c.addVertexFromJSON(new JSONObject(currentVert));
+
+			String currentEdge = "{"+ 
+					"\"_id\":\"/usr/local/something_hasFlow_11.11.11.11:1111_to_22.22.22.22:" + i + "\"," +
+					"\"_inV\":\"11.11.11.11:1111_to_22.22.22.22:" + i + "\"," +
+					"\"_outV\":\"/usr/local/something\"," +
+					"\"_label\":\"hasFlow\","+
+					"\"description\":\"test edge\""+
+					"}";
+			c.addEdgeFromJSON(new JSONObject(currentEdge));
+		}
+
+		try {
+			//find node ids
+			String id = c.findVertId("/usr/local/something");
+			String id2 = c.findVertId("11.11.11.11:1111_to_22.22.22.22:1");
+
+			//There should be no edge between them
+			assertEquals(0, c.getEdgeCount(id, id2, "hasFlow")); //just to be sure.
+			assertEquals(1, c.getEdgeCount(id2, id, "hasFlow"));
+
+		} catch (RexProException e) {
+			fail("RexProException");
+			e.printStackTrace();
+		} catch (IOException e) {
+			fail("IOException");
+			e.printStackTrace();
+		}
+	}
+
+	/**
+	 * creates a vertex of high reverse degree, and one of low degree, and searches for the edge(s) between them.
+	 * @throws IOException 
+	 * @throws RexProException 
+	 * @throws JSONException 
+	 */
+	public void testHighReverseDegreeVerts() throws JSONException, RexProException, IOException
+	{
+		DBConnection c = null;
+		try{
+			Configuration config = DBConnection.getTestConfig();
+			RexsterClient client = DBConnection.createClient(config, WAIT_TIME);
+			List names = client.execute("mgmt = g.getManagementSystem();mgmt.getPropertyKey(\"source\");");
+			if(names.get(0) == null){
+				client.execute("mgmt = g.getManagementSystem();"
+					+ "name = mgmt.makePropertyKey(\"source\").dataType(String.class).cardinality(Cardinality.SET).make();"
+					+ "mgmt.commit();g;");
+			}
+			c = new DBConnection( client );
+			c.createIndices();
+		}catch(Exception e){
+			e.printStackTrace(); //TODO
+		} //the possible NPE below is fine, don't care if test errors.
+
+		c.removeAllVertices();
+
+		String vert1 = "{" +
+				"\"_id\":\"11.11.11.11:1111\"," +
+				"\"_type\":\"vertex\","+
+				"\"source\":\"test\","+
+				"\"vertexType\":\"address\""+
+				"}";
+		String vert2 = "{" +
+				"\"_id\":\"11.11.11.11\"," +
+				"\"_type\":\"vertex\","+
+				"\"source\":\"test\","+
+				"\"vertexType\":\"IP\""+
+				"}";
+		c.addVertexFromJSON(new JSONObject(vert1));
+		c.addVertexFromJSON(new JSONObject(vert2));
+
+		try {
+			//find node ids
+			String id = c.findVertId("11.11.11.11:1111");
+			String id2 = c.findVertId("11.11.11.11");
+
+			//There should be no edge between them
+			assertEquals(0, c.getEdgeCount(id, id2, "hasIP"));
+			assertEquals(0, c.getEdgeCount(id2, id, "hasIP")); //just to be sure.
+
+		} catch (RexProException e) {
+			fail("RexProException");
+			e.printStackTrace();
+		} catch (IOException e) {
+			fail("IOException");
+			e.printStackTrace();
+		}
+
+		String edge = "{"+ 
+				"\"_id\":\"11.11.11.11:1111_hasIP_11.11.11.11\"," +
+				"\"_inV\":\"11.11.11.11\"," +
+				"\"_outV\":\"11.11.11.11:1111\"," +
+				"\"_label\":\"hasIP\","+
+				"\"description\":\"test edge\""+
+				"}";
+		c.addEdgeFromJSON(new JSONObject(edge));
+
+		try {
+			//find node ids
+			String id = c.findVertId("11.11.11.11:1111");
+			String id2 = c.findVertId("11.11.11.11");
+
+			//There should be no edge between them
+			assertEquals(0, c.getEdgeCount(id, id2, "hasIP"));
+			assertEquals(1, c.getEdgeCount(id2, id, "hasIP")); //just to be sure.
+
+		} catch (RexProException e) {
+			fail("RexProException");
+			e.printStackTrace();
+		} catch (IOException e) {
+			fail("IOException");
+			e.printStackTrace();
+		}
+
+		for(int i=1200; i<2000; i++){
+			String currentVert = "{" +
+					"\"_id\":\"11.11.11.11:" + i + "\"," +
+					"\"_type\":\"vertex\","+
+					"\"source\":\"test\","+
+					"\"vertexType\":\"address\""+
+					"}";
+			c.addVertexFromJSON(new JSONObject(currentVert));
+
+			String currentEdge = "{"+ 
+					"\"_id\":\"11.11.11.11:" + i + "_hasIP_11.11.11.11\"," +
+					"\"_inV\":\"11.11.11.11\"," +
+					"\"_outV\":\"11.11.11.11:" + i + "\"," +
+					"\"_label\":\"hasIP\","+
+					"\"description\":\"test edge\""+
+					"}";
+			c.addEdgeFromJSON(new JSONObject(currentEdge));
+		}
+
+		try {
+			//find node ids
+			String id = c.findVertId("11.11.11.11:1111");
+			String id2 = c.findVertId("11.11.11.11");
+
+			//There should be no edge between them
+			assertEquals(0, c.getEdgeCount(id, id2, "hasIP"));
+			assertEquals(1, c.getEdgeCount(id2, id, "hasIP")); //just to be sure.
+
+		} catch (RexProException e) {
+			fail("RexProException");
+			e.printStackTrace();
+		} catch (IOException e) {
+			fail("IOException");
+			e.printStackTrace();
+		}
+	}
 
 	/**
 	 * Tests loading & querying from realistic graphson file (~2M file)
