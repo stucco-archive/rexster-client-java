@@ -49,7 +49,7 @@ public class DBConnection {
 	private static int VERT_ID_CACHE_LIMIT = 10000;
 	private Map<String, String> cardinalityCache = null;
 	private String dbType = null;
-	private static int WRITE_CONFIRM_TRY_LIMIT = 10;
+	private static int WRITE_CONFIRM_TRY_LIMIT = 6;
 	private static int COMMIT_TRY_LIMIT = 4;
 	private static String[] HIGH_FORWARD_DEGREE_EDGE_LABELS = {"hasFlow"}; //TODO: update as needed.  Knowing these allows some queries to be optimized.
 	private static String[] HIGH_REVERSE_DEGREE_EDGE_LABELS = {"hasIP", "hasPort", "hasVulnerability", "inAddressRange"}; //TODO: like above, but currently unused (because most queries don't care about the reverse degree).
