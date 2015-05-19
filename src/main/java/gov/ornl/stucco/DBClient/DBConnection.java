@@ -123,8 +123,8 @@ public class DBConnection {
 	public DBConnection(RexsterClient c){
 		//TODO
 		logger = LoggerFactory.getLogger(DBConnection.class);
-		vertIDCache = new HashMap<String, String>(VERT_ID_CACHE_LIMIT);
-		vertIDCacheRecentlyRead = new HashSet<String>(VERT_ID_CACHE_LIMIT);
+		vertIDCache = new HashMap<String, String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
+		vertIDCacheRecentlyRead = new HashSet<String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
 		cardinalityCache = new HashMap<String, String>(200);
 		client = c;
 	}
@@ -765,19 +765,26 @@ public class DBConnection {
 		if(vertIDCache.size() >= VERT_ID_CACHE_LIMIT){
 			logger.info("vertex id cache exceeded limit of " + VERT_ID_CACHE_LIMIT + 
 					" ... evicting " + (vertIDCache.size() - vertIDCacheRecentlyRead.size()) + " unused items.");
-			Map<String, String> newVertIDCache = new HashMap<String, String>(VERT_ID_CACHE_LIMIT);
+			Map<String, String> newVertIDCache = new HashMap<String, String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
 			for(String n : vertIDCacheRecentlyRead){
-				newVertIDCache.put(n, vertIDCache.get(n));
+				if(vertIDCache.containsKey(n)){
+					newVertIDCache.put(n, vertIDCache.get(n));
+				}
 			}
-			vertIDCacheRecentlyRead = new HashSet<String>(VERT_ID_CACHE_LIMIT);
+			vertIDCacheRecentlyRead = new HashSet<String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
 			vertIDCache = newVertIDCache;
 		}
 		vertIDCache.put(name, id);
 	}
 	
 	private String vertIDCacheGet(String name){
-		vertIDCacheRecentlyRead.add(name);
-		return vertIDCache.get(name);
+		if(vertIDCache.containsKey(name)){ 
+			vertIDCacheRecentlyRead.add(name);
+			return vertIDCache.get(name);
+		}else{
+			return null;
+		}
+		
 	}
 	
 	/*
@@ -808,8 +815,8 @@ public class DBConnection {
 		}
 
 		//clear the cache now.
-		vertIDCache = new HashMap<String, String>(VERT_ID_CACHE_LIMIT);
-		vertIDCacheRecentlyRead = new HashSet<String>(VERT_ID_CACHE_LIMIT);
+		vertIDCache = new HashMap<String, String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
+		vertIDCacheRecentlyRead = new HashSet<String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
 
 		return ret;
 
