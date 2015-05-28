@@ -484,8 +484,8 @@ public class DBConnection {
 			//logger.info("findVert found 0 matching verts for name:" + name); //this is too noisy, the invoking function can complain if it wants to...
 			return null;
 		}else if(query_ret_list.size() > 1){
-			logger.warn("findVert found more than 1 matching verts for name:" + name);
-			return null;
+			logger.warn("findVert found more than 1 matching verts for name: " + name + " so returning the first item.");
+			//return null;
 		}
 
 		return query_ret_list.get(0);
