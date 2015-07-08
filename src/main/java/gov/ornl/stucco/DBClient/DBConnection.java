@@ -611,20 +611,20 @@ public class DBConnection {
 		}
 
 		if(!highDegree){
-			query_ret = client.execute("g.v(ID_OUT).outE(LABEL).inV();", param);
-			List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
+			query_ret = client.execute("g.v(ID_OUT).outE(LABEL).inV().id;", param);
+			List<Long> query_ret_list = (List<Long>)query_ret;
 			//System.out.println("query ret list contains " + query_ret_list.size() + " items.");
-			for(Map<String, Object> item : query_ret_list){
-				if(Integer.parseInt(inv_id) == Integer.parseInt((String)item.get("_id")))
+			for(Long item : query_ret_list){
+				if(Long.parseLong(inv_id) == item)
 					edgeCount++;
 			}
 			return edgeCount;
 		}else{
-			query_ret = client.execute("g.v(ID_IN).inE(LABEL).outV();", param);
-			List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
+			query_ret = client.execute("g.v(ID_IN).inE(LABEL).outV().id;", param);
+			List<Long> query_ret_list = (List<Long>)query_ret;
 			//System.out.println("query ret list contains " + query_ret_list.size() + " items.");
-			for(Map<String, Object> item : query_ret_list){
-				if(Integer.parseInt(outv_id) == Integer.parseInt((String)item.get("_id")))
+			for(Long item : query_ret_list){
+				if(Long.parseLong(outv_id) == item)
 					edgeCount++;
 			}
 			return edgeCount;
