@@ -1,6 +1,5 @@
 package gov.ornl.stucco.DBClient;
 
-import gov.ornl.stucco.DBClient.Constraint;
 import gov.ornl.stucco.DBClient.Constraint.Condition;
 
 import java.io.File;
@@ -10,18 +9,16 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeSet;
 
-import org.apache.commons.configuration.BaseConfiguration;
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.configuration.PropertiesConfiguration;
 import org.json.JSONArray;
@@ -30,15 +27,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 
-import com.thinkaurelius.titan.core.Cardinality;
-import com.thinkaurelius.titan.core.TitanGraph;
-import com.thinkaurelius.titan.graphdb.types.vertices.PropertyKeyVertex;
 import com.tinkerpop.rexster.client.RexProException;
 import com.tinkerpop.rexster.client.RexsterClient;
 import com.tinkerpop.rexster.client.RexsterClientFactory;
-import com.tinkerpop.rexster.client.RexsterClientTokens;
-import com.tinkerpop.rexster.protocol.serializer.msgpack.MsgPackSerializer;
-import com.tinkerpop.blueprints.*;
 
 public class DBConnection {
 
@@ -47,8 +38,7 @@ public class DBConnection {
 	private Map<String, String> vertIDCache = null; //TODO could really split this into a simple cache class.
 	private Set<String> vertIDCacheRecentlyRead = null;
 	private static int VERT_ID_CACHE_LIMIT = 10000;
-	private Map<String, String> cardinalityCache = null;
-	private String dbType = null;
+	private Map<String,String> cardinalityCache = new HashMap<String, String>(200);
 	private static int WRITE_CONFIRM_TRY_LIMIT = 6;
 	private static int COMMIT_TRY_LIMIT = 4;
 	private static String[] HIGH_FORWARD_DEGREE_EDGE_LABELS = {"hasFlow"}; //TODO: update as needed.  Knowing these allows some queries to be optimized.
@@ -125,297 +115,113 @@ public class DBConnection {
 		logger = LoggerFactory.getLogger(DBConnection.class);
 		vertIDCache = new HashMap<String, String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
 		vertIDCacheRecentlyRead = new HashSet<String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
-		cardinalityCache = new HashMap<String, String>(200);
 		client = c;
 	}
-
-	private String getDBType() throws IOException{
-		if(this.dbType == null){
-			String type = null;
-			try{
-				type = client.execute("g.getClass()").get(0).toString();
-			}catch(Exception e){
-				logger.error("Could not find graph type!",e);
-				throw new IOException("Could not find graph type!");
-			}
-			if( type.equals("class com.tinkerpop.blueprints.impls.tg.TinkerGraph") ){
-				this.dbType = "TinkerGraph";
-			}else if( type.equals("class com.thinkaurelius.titan.graphdb.database.StandardTitanGraph") ){
-				this.dbType = "TitanGraph";
-			}else{
-				throw new IOException("Could not find graph type - unknown type!");
-			}
-		}
-		return this.dbType;
-	}
-
-
+	
 	public void createIndices() throws IOException{
-		String graphType = getDBType();
-		if( graphType.equals("TinkerGraph") ){
-			createTinkerGraphIndices();
-		}else if( graphType.equals("TitanGraph") ){
-			createTitanIndices();
-		}else{
-			logger.warn("unknown graph type!  Assuming it is Titan...");
-			createTitanIndices();
-		}
+		// Not sure if this is required other than for tests
+	}
+	
+	public void addVertexFromJSON(JSONObject vert) throws RexProException, IOException{
+		addVertexFromMap(jsonVertToMap(vert));
 	}
 
-
-	private void createTinkerGraphIndices(){
-		List<String> currentIndices = new ArrayList<String>();
-		try {
-			currentIndices = client.execute("g.getIndexedKeys(Vertex.class)");
-		} catch (Exception e) { 
-			//this.client = null;
-			logger.error("problem getting indexed keys, assuming there were none...");
-			logger.error("Exception was: ",e);
-		}
-		logger.info( "found vertex indices: " + currentIndices );
-		try {
-			if(!currentIndices.contains("name")){
-				logger.info("'name' key index not found, creating ...");
-				client.execute("g.createKeyIndex('name', Vertex.class);g");
-			}
-			if(!currentIndices.contains("vertexType")){
-				logger.info("'vertexType' key index not found, creating ...");
-				client.execute("g.createKeyIndex('vertexType', Vertex.class);g");
-			}
-			if(!currentIndices.contains("ipInt")){
-				logger.info("'ipInt' key index not found, creating ...");
-				client.execute("g.createKeyIndex('ipInt', Vertex.class);g");
-			}
-			if(!currentIndices.contains("startIPInt")){
-				logger.info("'startIPInt' key index not found, creating ...");
-				client.execute("g.createKeyIndex('startIPInt', Vertex.class);g");
-			}
-			if(!currentIndices.contains("endIPInt")){
-				logger.info("'endIPInt' key index not found, creating ...");
-				client.execute("g.createKeyIndex('endIPInt', Vertex.class);g");
-			}
-		} catch (RexProException e) {
-			logger.error("Exception was: ",e.getLocalizedMessage());
-			logger.warn(getStackTrace(e));
-		} catch (IOException e) {
-			logger.error("Exception was: ",e.getLocalizedMessage());
-			logger.warn(getStackTrace(e));
-		}
-	}
-
-	private void createTitanIndices(){
-		List currentIndices = null;
-		try {
-			//configure vert indices needed
-			//List currentIndices = client.execute("g.getManagementSystem().getGraphIndexes(Vertex.class)");
-			currentIndices = client.execute("g.getIndexedKeys(Vertex.class)");
-		} catch (Exception e) { 
-			//this.client = null;
-			logger.error("problem getting indexed keys, assuming there were none...");
-			logger.error("Exception was: ",e);
-		}
-		logger.info( "found vertex indices: " + currentIndices );
-		try{
-			//		System.out.println("currentIndices = " + currentIndices +  " " + "name");
-			if(currentIndices == null || !currentIndices.contains("name")){
-				List names = client.execute("mgmt = g.getManagementSystem();mgmt.getPropertyKey(\"name\");");
-				//logger.info("name found: ", names.get(0));
-				if(names.get(0) == null){
-					logger.info("'name' variable and index not found, creating var and index...");
-					client.execute("mgmt = g.getManagementSystem();"
-							+ "name = mgmt.makePropertyKey(\"name\").dataType(String.class).make();"
-							+ "mgmt.buildIndex(\"byName\",Vertex.class).addKey(name).unique().buildCompositeIndex();"
-							+ "mgmt.commit();g;");
-				}else{
-					logger.info("'name' was found, but not indexed.  creating index...");
-					client.execute("mgmt = g.getManagementSystem();"
-							+ "name = mgmt.getPropertyKey(\"name\");"
-							+ "mgmt.buildIndex(\"byName\",Vertex.class).addKey(name).unique().buildCompositeIndex();"
-							+ "mgmt.commit();g;");
-				}
-			}
-			if(currentIndices == null || !currentIndices.contains("vertexType")){
-				List names = client.execute("mgmt = g.getManagementSystem();mgmt.getPropertyKey(\"vertexType\");");
-				//logger.info("vertexType found: ", names.get(0));
-				if(names.get(0) == null){
-					logger.info("'vertexType' variable and index not found, creating var and index...");
-					client.execute("mgmt = g.getManagementSystem();"
-							+ "vertexType = mgmt.makePropertyKey(\"vertexType\").dataType(String.class).make();"
-							+ "mgmt.buildIndex(\"byVertexType\",Vertex.class).addKey(vertexType).buildCompositeIndex();"
-							+ "mgmt.commit();g;");
-				}else{
-					logger.info("'vertexType' was found, but not indexed.  creating index...");
-					client.execute("mgmt = g.getManagementSystem();"
-							+ "vertexType = mgmt.getPropertyKey(\"vertexType\");"
-							+ "mgmt.buildIndex(\"byVertexType\",Vertex.class).addKey(vertexType).buildCompositeIndex();"
-							+ "mgmt.commit();g;");
-				}
-			}
-			/*
-			if(!currentIndices.contains("name") || !currentIndices.contains("vertexType")){
-				logger.info("name or vertexType index not found, creating combined index...");
-				client.execute("mgmt = g.getManagementSystem();"
-						+ "name = mgmt.getPropertyKey(\"name\");"
-						+ "vertexType = mgmt.getPropertyKey(\"vertexType\");"
-						+ "mgmt.buildIndex(\"byNameAndVertexType\",Vertex.class).addKey(name).addKey(vertexType).unique().buildCompositeIndex();"
-						+ "mgmt.commit();g;"); //TODO: not convinced that this (new) index really works, need to test further.  but it's currently unused, so leaving as-is for now.
-			}*/
-			commit();
-			logger.info("Connection is good!");
-		}catch(Exception e){
-			logger.warn("could not configure missing vertex indices!", e.getLocalizedMessage());
-			logger.warn(getStackTrace(e));
-			//NB: this is (typically) non-fatal.  Multiple workers can attempt to create the indices at the same time, and some will just fail in this way.
-			//TODO: these need to either be created in one thread only, or else use proper locking.
-			//this.client = null;
-			//logger.error("Connection is unusable!");
-		}
-		/*
-		currentIndices = client.execute("g.getIndexedKeys(Edge.class)");
-		logger.info( "found edge indices: " + currentIndices );
-		try{
-			if(!currentIndices.contains("name")){
-				logger.info("name index not found, creating...");
-				client.execute("g.makeKey(\"edgeName\").dataType(String.class).indexed(\"standard\",Edge.class).unique().make();g.commit();g;");
-			}
-		}catch(Exception e){
-			logger.error("could not configure missing indices!", e);
-		}
-		 */
-	}
-
-	public boolean addVertexFromJSON(JSONObject vert) throws RexProException, IOException{
-		return addVertexFromMap(jsonVertToMap(vert));
-	}
-
-	public boolean addVertexFromMap(Map<String, Object> vert) throws RexProException, IOException{
-		boolean ret = false;
-		Long newID = null;
-		String graphType = getDBType();
+	/** Adds a vertex, given a map of its properties as key-value pairs. */
+	public void addVertexFromMap(Map<String, Object> vert) throws RexProException, IOException{
+		String newID = null;
 		String name = (String)vert.get("name");
-		//System.out.println("vertex name is: " + name);
 		String id = (String)vert.get("_id");
-		//System.out.println("vertex id is: " + id);
-		if(name == null || name == ""){
+		if(name == null || name.isEmpty()){
 			name = id;
 			vert.put("name", name);
 		}
-		//any properties that aren't cardinality "SINGLE" can't be handled this way, handle them later. 
-		Map<String, Object> specialCardProps = new HashMap<String, Object>();
+		
+		//convert any multivalued properties to a list form.
 		Set<String> keySet = new HashSet<String>( (Set<String>)vert.keySet() );
-		for(String key : keySet){
-			if(findCardinality(key) != null && !findCardinality(key).equalsIgnoreCase("SINGLE")){
-				specialCardProps.put(key, vert.get(key));
-				vert.remove(key);
-			}
+		for(Map.Entry<String, Object> entry : vert.entrySet()) {
+		    String key = entry.getKey();
+		    Object value = entry.getValue();
+		    Object newValue = convertMultiValueToList(value);
+		    if(newValue != value) {
+		        vert.put(key, newValue);
+		    }
 		}
+
 		vert.remove("_id"); //Some graph servers will ignore this ID, some won't.  Just remove them so it's consistent.
 		Map<String, Object> param = new HashMap<String, Object>();
 		param.put("VERT_PROPS", vert);
-		
-		if(graphType == "TitanGraph")
-			newID = (Long)client.execute("v = g.addVertex(null, VERT_PROPS);v.getId();", param).get(0);
-		//newID = (Long)client.execute("v = GraphSONUtility.vertexFromJson(VERT_PROPS, new GraphElementFactory(g), GraphSONMode.NORMAL, null);v.getId()", param).get(0);
-		if(graphType == "TinkerGraph")
-			newID = Long.parseLong((String)client.execute("v = g.addVertex(null, VERT_PROPS);v.getId();", param).get(0));
-		//newID = Long.parseLong((String)client.execute("v = GraphSONUtility.vertexFromJson(VERT_PROPS, new GraphElementFactory(g), GraphSONMode.NORMAL, null);v.getId()", param).get(0));
-		//System.out.println("new ID is: " + newID);
-		vertIDCachePut(name, newID.toString());
-		//handling the non-"SINGLE" cardinality properties now.
-		for(String key : specialCardProps.keySet()){
-			updateVertProperty(newID.toString(), key, specialCardProps.get(key));
-		}
-		
-		//confirm before proceeding
-		ret = false;
-		tryCommit(COMMIT_TRY_LIMIT);
-		int tryCount = 0;
-		//Confirm before proceeding
-		while(ret == false && tryCount < WRITE_CONFIRM_TRY_LIMIT){
-			//System.out.println("waiting for " + tryCount + " seconds in addVertexFromMap()");
-			waitFor(1000*tryCount + 1);
-			if( getVertByID(newID.toString()) != null && findVert(name) != null){
-				ret = true;
-			}
-			tryCount += 1;
-		}
 
-		return ret;
+		newID = (String)client.execute("v = g.addVertex(null, VERT_PROPS);g.commit();v.getId();", param).get(0);		
 	}
 
-	public boolean addEdgeFromJSON(JSONObject edge) throws RexProException, IOException{
-		boolean ret = false;
-		Map<String, Object> param = new HashMap<String, Object>();
+	/**
+	 * Converts multi-valued Object to List, but leaves other Objects alone.
+	 */
+    private Object convertMultiValueToList(Object value) {
+        
+        List newValue = new ArrayList();
+        if (value instanceof Set) {
+            newValue = new ArrayList((Set) value);
+        }
+        else if (value instanceof JSONArray ) {
+            for(int i=0; i<((JSONArray)value).length(); i++){
+                Object currVal = ((JSONArray)value).get(i);
+                newValue.add(currVal);
+            }
+        }
+        else if(value instanceof Object[]) {
+            for(int i=0; i<((Object[])value).length; i++){ 
+                Object currVal = ((Object[])value)[i];
+                newValue.add(currVal);
+            }
+        } else {
+            return value;
+        }
+        
+        return newValue;
+    }
 
-		//System.out.println("edge outV is " + edge.getString("_outV"));
-		String outv_id = findVertId(edge.getString("_outV"));
-		String inv_id = findVertId(edge.getString("_inV"));
-		String edgeName = edge.getString("_id");
-		//System.out.println("ID = " + edgeName);
-		//String edgeID = findEdgeId(edgeName);
-		if(outv_id == null){
-			//logger.error("Could not find out_v for edge: " + edge);
-			return false;
-		}
-		if(inv_id == null){
-			//logger.error("Could not find in_v for edge: " + edge);
-			return false;
-		}
-		String label = edge.optString("_label");
-		//System.out.println("confirming edge was not previously added");
-		if(getEdgeCount(inv_id, outv_id, label) >= 1){
-			//edge already exists, do nothing and return false.
-			// (if you wanted to update its properties, this is not the method for that)
-			//logger.debug("Attempted to add a duplicate edge.  ignoring .  Edge was " + edge);
-			return false;
-		}
-		param.put("ID_OUT", Integer.parseInt(outv_id));
-		param.put("ID_IN", Integer.parseInt(inv_id));
-		param.put("LABEL", label);
-		//build your param map obj
-		Map<String, Object> props = new HashMap<String, Object>();
-		props.put("edgeName", edgeName);
-		edge.remove("_inv");
-		edge.remove("_outv");
-		edge.remove("_id");
-		Iterator<String> k = edge.keys();
-		String key;
-		while(k.hasNext()){
-			key = k.next();
-			props.put(key, edge.get(key));
-			//	System.out.println(key);
-		}
-		
-		//and now finally add edge to graph.  If it fails, return false here. if it was ok, then we can continue below.
-		param.put("EDGE_PROPS", props);
-		ret = execute("g.addEdge(g.v(ID_OUT),g.v(ID_IN),LABEL,EDGE_PROPS)", param);
-		if(ret == false){ 
-			return ret;
-		}
-		
-		//confirm before proceeding
-		
-		ret = false;
-		tryCommit(COMMIT_TRY_LIMIT);
-		int tryCount = 0;
-		//Confirm before proceeding
-		while(ret == false && tryCount < WRITE_CONFIRM_TRY_LIMIT){
-			//System.out.println("waiting for " + tryCount + " seconds in addEdgeFromJSON()");
-			waitFor(1000*tryCount + 1);
-			//System.out.println("confirming edge was added: attempt " + tryCount);
-			if( getEdgeCount(inv_id, outv_id, label) >= 1){
-				ret = true;
-			}
-			tryCount += 1;
-		}
-		
-		return ret;
-	}
+    public void addEdgeFromJSON(JSONObject edge) throws RexProException, IOException{
+        Map<String, Object> param = new HashMap<String, Object>();
 
+        String outv_id = findVertId(edge.getString("_outV"));
+        String inv_id = findVertId(edge.getString("_inV"));
+        String edgeName = edge.getString("_id");
+        if(outv_id == null){
+            return;
+        }
+        if(inv_id == null){
+            return;
+        }
+        String label = edge.optString("_label");
+        if(getEdgeCount(inv_id, outv_id, label) >= 1){
+            //edge already exists, do nothing and return false.
+            // (if you wanted to update its properties, this is not the method for that)
+            return;
+        }
+        param.put("ID_OUT", outv_id);
+        param.put("ID_IN", inv_id);
+        param.put("LABEL", label);
+        //build your param map obj
+        Map<String, Object> props = new HashMap<String, Object>();
+        props.put("edgeName", edgeName);
+        edge.remove("_inv");
+        edge.remove("_outv");
+        edge.remove("_id");
+        Iterator<String> k = edge.keys();
+        String key;
+        while(k.hasNext()){
+            key = k.next();
+            props.put(key, edge.get(key));
+        }
+        
+        //and now finally add edge to graph.  If it fails, return false here. if it was ok, then we can continue below.
+        param.put("EDGE_PROPS", props);
+        execute("g.addEdge(g.v(ID_OUT),g.v(ID_IN),LABEL,EDGE_PROPS); g.commit()", param);
+    }
+    
 	private void commit() throws RexProException, IOException{
-		String graphType = getDBType();
-		if(graphType != "TinkerGraph")
-			execute("g.commit()");
+	    execute("g.commit()"); 
 	}
 	
 	//tries to commit, returns true if success.
@@ -423,6 +229,7 @@ public class DBConnection {
 		try{
 			commit();
 		}catch(Exception e){
+		    // TODO: should do logging here
 			return false;
 		}
 		return true;
@@ -465,7 +272,8 @@ public class DBConnection {
 
 	public Map<String, Object> getVertByID(String id) throws RexProException, IOException{
 		Map<String, Object> param = new HashMap<String, Object>();
-		param.put("ID", Integer.parseInt(id));
+		param.put("ID", id);
+		
 		Object query_ret = client.execute("g.v(ID).map();", param);
 		List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
 		Map<String, Object> query_ret_map = query_ret_list.get(0);
@@ -473,7 +281,7 @@ public class DBConnection {
 	}
 
 	public Map<String,Object> findVert(String name) throws IOException, RexProException{
-		if(name == null || name == "")
+		if(name == null || name.isEmpty())
 			return null;
 		Map<String, Object> param = new HashMap<String, Object>();
 		param.put("NAME", name);
@@ -490,26 +298,6 @@ public class DBConnection {
 
 		return query_ret_list.get(0);
 	}
-
-	/*
-    public Map<String,Object> findEdge(String edgeName) throws IOException, RexProException{
-    	if(edgeName == null || edgeName == "")
-    		return null;
-    	Map<String, Object> param = new HashMap<String, Object>();
-    	param.put("NAME", edgeName);
-    	Object query_ret = client.execute("g.query().has(\"name\",NAME).edges().toList();", param);
-    	List<Map<String,Object>> query_ret_list = (List<Map<String,Object>>)query_ret;
-    	//logger.info("query returned: " + query_ret_list);
-    	if(query_ret_list.size() == 0){
-    		//logger.info("findEdge found 0 matching edges for name:" + name); //this is too noisy, the invoking function can complain if it wants to...
-    		return null;
-    	}else if(query_ret_list.size() > 1){
-    		logger.warn("findEdge found more than 1 matching edges for name:" + edgeName);
-    		return null;
-    	}
-    	return query_ret_list.get(0);
-    }
-	 */
 
 	//function will check vertIDCache first, if id is not in there, then it is calling the findVert funciton
 	public String findVertId(String name) throws IOException, RexProException{
@@ -530,7 +318,7 @@ public class DBConnection {
 	}
 
 	public List<Map<String,Object>> findAllVertsByType(String vertexType) throws IOException, RexProException{
-		if(vertexType == null || vertexType == "")
+		if(vertexType == null || vertexType.isEmpty())
 			return null;
 
 		Map<String, Object> properties = new HashMap<String, Object>();
@@ -552,7 +340,6 @@ public class DBConnection {
 			return null;
 
 		Map<String, Object> param = new HashMap<String, Object>();
-		//String query = "g.query()";
 		String query = "g.V";
 		for(int i=0; i<constraints.size(); i++){
 			Constraint c = constraints.get(i);
@@ -561,7 +348,6 @@ public class DBConnection {
 			param.put(key, c.val);
 			query += ".has(\"" + c.prop + "\"," + cond + "," + key + ")";
 		}
-		//query += ".vertices().toList();";
 		query += ";";
 		Object query_ret = client.execute(query, param);
 		List<Map<String,Object>> query_ret_list = (List<Map<String,Object>>)query_ret;
@@ -577,59 +363,67 @@ public class DBConnection {
 		return (getEdgeCount(inv_id, outv_id, label) > 0);
 	}
 	
+	 /*
+     * returns edge count, or -1 if IDs not found. Throws exceptions if other error occurred.
+     */
+    public int getEdgeCount(String inv_id, String outv_id, String label) throws RexProException, IOException {
+        int retValue = getEdgeCountOrientDB(inv_id, outv_id, label);
+        return retValue;
+    }
+
 	/*
-	 * returns edge count, or -1 if IDs not found. Throws exceptions if other error occurred.
-	 */
-	public int getEdgeCount(String inv_id, String outv_id, String label) throws RexProException, IOException {
-		int edgeCount = 0;
-		if(inv_id == null || inv_id == "" || outv_id == null || outv_id == "" || label == null || label == "")
-			return -1;
+     * returns edge count, or -1 if IDs not found. Throws exceptions if other error occurred.
+     */
+    private int getEdgeCountOrientDB(String inv_id, String outv_id, String label) throws RexProException, IOException {
+        int edgeCount = 0;
+        if(inv_id == null || inv_id.isEmpty() || outv_id == null || outv_id.isEmpty() || label == null || label.isEmpty())
+            return -1;
 
-		Map<String, Object> param = new HashMap<String, Object>();
-		param.put("ID_OUT", Integer.parseInt(outv_id));
-		param.put("ID_IN", Integer.parseInt(inv_id));
-		param.put("LABEL", label);
-		Object query_ret;
+        Map<String, Object> param = new HashMap<String, Object>();
+        param.put("ID_OUT", outv_id);
+        param.put("ID_IN", inv_id);
+        param.put("LABEL", label);
+        Object query_ret;
 
-		query_ret = client.execute("g.v(ID_OUT);", param);
-		if(query_ret == null){
-			logger.warn("getEdgeCount could not find out_id:" + outv_id);
-			return -1;
-		}
-		query_ret = client.execute("g.v(ID_IN);", param);
-		if(query_ret == null){
-			logger.warn("getEdgeCount could not find inv_id:" + inv_id);
-			return -1;
-		}
+        query_ret = client.execute("g.v(ID_OUT);", param);
+        if(query_ret == null){
+            logger.warn("getEdgeCount could not find out_id:" + outv_id);
+            return -1;
+        }
+        query_ret = client.execute("g.v(ID_IN);", param);
+        if(query_ret == null){
+            logger.warn("getEdgeCount could not find inv_id:" + inv_id);
+            return -1;
+        }
 
-		boolean highDegree = false;
-		for(String currLabel : HIGH_FORWARD_DEGREE_EDGE_LABELS){
-			if(label.equals(currLabel)){
-				highDegree = true;
-				break;
-			}
-		}
+        boolean highDegree = false;
+        for(String currLabel : HIGH_FORWARD_DEGREE_EDGE_LABELS){
+            if(label.equals(currLabel)){
+                highDegree = true;
+                break;
+            }
+        }
 
-		if(!highDegree){
-			query_ret = client.execute("g.v(ID_OUT).outE(LABEL).inV().id;", param);
-			List<Long> query_ret_list = (List<Long>)query_ret;
-			//System.out.println("query ret list contains " + query_ret_list.size() + " items.");
-			for(Long item : query_ret_list){
-				if(Long.parseLong(inv_id) == item)
-					edgeCount++;
-			}
-			return edgeCount;
-		}else{
-			query_ret = client.execute("g.v(ID_IN).inE(LABEL).outV().id;", param);
-			List<Long> query_ret_list = (List<Long>)query_ret;
-			//System.out.println("query ret list contains " + query_ret_list.size() + " items.");
-			for(Long item : query_ret_list){
-				if(Long.parseLong(outv_id) == item)
-					edgeCount++;
-			}
-			return edgeCount;
-		}
-	}
+        if(!highDegree){
+            query_ret = client.execute("g.v(ID_OUT).outE(LABEL).inV().id;", param);
+            List<String> query_ret_list = (List<String>)query_ret;
+            //System.out.println("query ret list contains " + query_ret_list.size() + " items.");
+            for(String item : query_ret_list){
+                if(inv_id.equals(item))
+                    edgeCount++;
+            }
+            return edgeCount;
+        }else{
+            query_ret = client.execute("g.v(ID_IN).inE(LABEL).outV().id;", param);
+            List<String> query_ret_list = (List<String>)query_ret;
+            //System.out.println("query ret list contains " + query_ret_list.size() + " items.");
+            for(String item : query_ret_list){
+                if(outv_id.equals(item))
+                    edgeCount++;
+            }
+            return edgeCount;
+        }
+    }
 
 	public void updateVert(String id, Map<String, Object> props) throws RexProException, IOException{
 		String[] keys = props.keySet().toArray(new String[0]);
@@ -637,142 +431,111 @@ public class DBConnection {
 			updateVertProperty(id, keys[i], props.get(keys[i]));
 		}
 	}
-
-	public boolean updateVertProperty(String id, String key, Object val) throws RexProException, IOException{
-		boolean ret = false;
+    public void updateVertProperty(String id, String key, Object val) throws RexProException, IOException{
+        updateVertPropertyOrientDB(id, key, val);
+    }
+    
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+    public void updateVertPropertyOrientDB(String id, String key, Object val) throws RexProException, IOException{
 		HashMap<String, Object> param = new HashMap<String, Object>();
 
-		String cardinality = findCardinality(key);
+		String cardinality = findCardinality(id, key, val);
 		if(cardinality == null){
 			cardinality = "SINGLE";
 			cardinalityCache.put(key, cardinality);
 		}
 
-		param.put("ID", Integer.parseInt(id));
+		param.put("ID", id);
 		param.put("KEY", key);
 
-		if (cardinality.equals("SINGLE")) {
-			param.put("VAL", val);
-			ret = execute("g.v(ID).setProperty(KEY, VAL)", param);
-		} else {
-			boolean skipVal = false;
-			if(val instanceof JSONArray){
-				for(int i=0; i<((JSONArray)val).length(); i++){
-					Object currVal = ((JSONArray)val).get(i);
-					if(cardinality.equals("SET")){
-						Map<String, Object> query_ret_map = getVertByID(id);
-						if(query_ret_map.get(key) != null && ((List)query_ret_map.get(key)).contains(currVal)) skipVal = true;
-					}
-					if(!skipVal){
-						param.put("VAL",currVal);
-						ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
-					}
-					skipVal = false;
-				}
-			}else if(val instanceof Set){
-				for(Object currVal : (Set)val){
-					if(cardinality.equals("SET")){
-						Map<String, Object> query_ret_map = getVertByID(id);
-						if(query_ret_map.get(key) != null && ((List)query_ret_map.get(key)).contains(currVal)) skipVal = true;
-					}
-					if(!skipVal){
-						param.put("VAL", currVal);
-						ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
-					}
-					skipVal = false;
-				}
-			}else if(val instanceof List){
-				for(Object currVal : (List)val){
-					if(cardinality.equals("SET")){
-						Map<String, Object> query_ret_map = getVertByID(id);
-						if(query_ret_map.get(key) != null && ((List)query_ret_map.get(key)).contains(currVal)) skipVal = true;
-					}
-					if(!skipVal){
-						param.put("VAL", currVal);
-						ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
-					}
-					skipVal = false;
-				}
-			}else if(val instanceof Object[]){
-				for(int i=0; i<((Object[])val).length; i++){ 
-					Object currVal = ((Object[])val)[i];
-					if(cardinality.equals("SET")){
-						Map<String, Object> query_ret_map = getVertByID(id);
-						if(query_ret_map.get(key) != null && ((List)query_ret_map.get(key)).contains(currVal)) skipVal = true;
-					}
-					if(!skipVal){
-						param.put("VAL", currVal);
-						ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
-					}
-					skipVal = false;
-				}
-			}else{
-				if(cardinality.equals("SET")){
-					Map<String, Object> query_ret_map = getVertByID(id);
-					if(query_ret_map.get(key) != null && ((List)query_ret_map.get(key)).contains(val)) skipVal = true;
-				}
-				if(!skipVal){
-					param.put("VAL", val);
-					ret = execute("g.v(ID).addProperty(KEY, VAL)", param);
-				}
+		if (cardinality.equals("SET")) {
+		    // At this point, we assume it's in List form
+		    
+			Map<String, Object> queryRetValue = getVertByID(id);
+			if (queryRetValue == null) {
+			    // Handle how?
+			}
+			
+			Object obj = convertMultiValueToList(val);
+			List newValue;
+			if (obj instanceof List) {
+			    newValue = (List) obj;
+			}
+			else {
+			    newValue = Collections.singletonList(obj);
+			}
+			
+			List currentList = (List)queryRetValue.get(key);
+
+			if(currentList == null) {
+			    // no value existed in the DB
+			    val = newValue;
+			} else {
+			    Set currentSet = new HashSet(currentList);
+			    for (Object currVal : newValue) {
+			        if (!currentSet.contains(currVal)) {
+			            currentSet.add(currVal);
+			            currentList.add(currVal);
+			        }
+			    }
+			    val = currentList;
 			}
 		}
-		tryCommit(COMMIT_TRY_LIMIT);
-		//TODO: confirm before proceeding?
-		return ret;
+		param.put("VAL", val);
+		execute("g.v(ID).setProperty(KEY, VAL);g.commit()", param);
+//		tryCommit(COMMIT_TRY_LIMIT);
 	}
 	
-	/*
-	public void updateEdge(String id, Map<String, Object> props) throws RexProException, IOException{
-		String[] keys = props.keySet().toArray(new String[0]);
-		for(int i=0; i<keys.length; i++){
-			updateEdgeProperty(id, keys[i], props.get(keys[i]));
-		}
-	}
-
-	//TODO
-	public boolean updateEdgeProperty(String id, String key, Object val) throws RexProException, IOException{
-		boolean ret = false;
-		return ret;
-	}
-	*/
-	
-	/*
-	 * returns cardinality of property "key".  If not found, returns null.
+	/**
+	 * returns cardinality of property "key" from vertex id.  If not found, returns null.
 	 */
-	public String findCardinality(String key) throws RexProException, IOException{
+	private String findCardinality(String id, String key, Object val) throws RexProException, IOException {
 		String cardinality;
 
 		cardinality = cardinalityCache.get(key);
 		if(cardinality == null){
-			List<Object> queryRet;
-
-			String query = "mgmt=g.getManagementSystem();mgmt.getPropertyKey('" + key + "')";
-			queryRet = client.execute(query, null);
-			if(queryRet == null || queryRet.get(0) == null){
-				cardinality = null;
-			}else{
-				query = "mgmt=g.getManagementSystem();mgmt.getPropertyKey('" + key + "').cardinality";
-				queryRet = client.execute(query, null);
-				cardinality = (String)queryRet.get(0);
-				cardinalityCache.put(key, cardinality);
-			}
+		    if(isMultipleCardinality(val)){
+                cardinality = "SET";
+                cardinalityCache.put(key, cardinality);
+            } else {
+                // go to DB to see if it has this property, from this vertex id
+                Map<String, Object> queryRetMap = getVertByID(id);  
+                if (queryRetMap != null) {
+                    Object dbVal = queryRetMap.get(key);
+                    if (dbVal != null) {
+                        if(isMultipleCardinality(dbVal)){
+                            cardinality = "SET";
+                        }
+                        else {
+                            cardinality = "SINGLE";
+                        }
+                        cardinalityCache.put(key, cardinality);
+                    }
+                } 
+            }
 		}
 		return cardinality;
+	}
+	
+	/** Gets whether the value's data type supports a cardinality of "SET". */
+	private boolean isMultipleCardinality(Object value) {
+        return (value != null && (value instanceof JSONArray || value instanceof Set || value instanceof List || value instanceof Object[]));
 	}
 
 	private void vertIDCachePut(String name, String id){
 		if(vertIDCache.size() >= VERT_ID_CACHE_LIMIT){
 			logger.info("vertex id cache exceeded limit of " + VERT_ID_CACHE_LIMIT + 
 					" ... evicting " + (vertIDCache.size() - vertIDCacheRecentlyRead.size()) + " unused items.");
-			Map<String, String> newVertIDCache = new HashMap<String, String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
-			for(String n : vertIDCacheRecentlyRead){
-				if(vertIDCache.containsKey(n)){
-					newVertIDCache.put(n, vertIDCache.get(n));
-				}
-			}
-			vertIDCacheRecentlyRead = new HashSet<String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
-			vertIDCache = newVertIDCache;
+//			Map<String, String> newVertIDCache = new HashMap<String, String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
+//			for(String n : vertIDCacheRecentlyRead){
+//				if(vertIDCache.containsKey(n)){
+//					newVertIDCache.put(n, vertIDCache.get(n));
+//				}
+//			}
+//			vertIDCacheRecentlyRead = new HashSet<String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
+//			vertIDCache = newVertIDCache;
+			vertIDCache.keySet().retainAll(vertIDCacheRecentlyRead);
+			vertIDCacheRecentlyRead.clear();
 		}
 		vertIDCache.put(name, id);
 	}
@@ -787,74 +550,58 @@ public class DBConnection {
 		
 	}
 	
+	
+	
 	/*
 	 * Only used by removeAllVertices()
 	 */
-	private boolean removeCachedVertices(){
+	private void removeCachedVertices(){
 		//NB: this query is slow enough that connection can time out if the DB starts with many vertices.
 
 		if(vertIDCache.isEmpty())
-			return true;
+			return;
 
-		boolean ret = true;
-		//delete the known nodes first, to help prevent timeouts.
-		Map<String,Object> param;
-		Collection<String> ids = vertIDCache.values();
-		for(String id : ids){
-			param = new HashMap<String,Object>();
-			param.put("ID", Integer.parseInt(id));
-			try{
-				client.execute("g.v(ID).remove();g", param);
-			}catch(Exception e){
-				e.printStackTrace();
-				ret = false;
-			}
-		}
-		if(ret){
-			ret = tryCommit(COMMIT_TRY_LIMIT);
-		}
 
 		//clear the cache now.
-		vertIDCache = new HashMap<String, String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
-		vertIDCacheRecentlyRead = new HashSet<String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
+		vertIDCache.clear();
+//		= new HashMap<String, String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
+		vertIDCacheRecentlyRead.clear();// = new HashSet<String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
 
-		return ret;
+//		return ret;
 
 	}
 
 	/*
 	 * Only use in tests.
 	 */
-	public boolean removeAllVertices(){
+	public void removeAllVertices(){
 		//NB: this query is slow enough that connection can time out if the DB starts with many vertices.
-		boolean ret = false; 
+//		boolean ret = false; 
 		removeCachedVertices();
 		try{
-			client.execute("g.V.remove();g");
+			client.execute("g.V.remove();g.commit()");
 		}catch(Exception e){
 			e.printStackTrace();
-			ret = false;
+//			ret = false;
 		}
-		try{
-			int tryCount = 0;
-			List<Object> queryRet;
-			//Confirm before proceeding
-			while(ret == false && tryCount < WRITE_CONFIRM_TRY_LIMIT){
-				//System.out.println("waiting for " + tryCount + " seconds in removeAllVertices()");
-				waitFor(1000*tryCount +1);
-				commit();
-				queryRet = client.execute("g.V.count();");
-				if( (Long)queryRet.get(0) == 0){
-					ret = true;
-				}
-				tryCount += 1;
-			}
-		}catch(Exception e){
-			logger.warn(e.getLocalizedMessage());
-			logger.warn(getStackTrace(e));
-			ret = false;
-		}
-		return ret;
+//		try{
+//			int tryCount = 0;
+//			List<Object> queryRet;
+//			//Confirm before proceeding
+//			while(ret == false && tryCount < WRITE_CONFIRM_TRY_LIMIT){
+//				//System.out.println("waiting for " + tryCount + " seconds in removeAllVertices()");
+//				waitFor(1000*tryCount +1);
+//				commit();
+//				queryRet = client.execute("g.V.count();");
+//				if( (Long)queryRet.get(0) == 0){
+//					ret = true;
+//				}
+//				tryCount += 1;
+//			}
+//		}catch(Exception e){
+//			logger.warn(e.getLocalizedMessage());
+//			logger.warn(getStackTrace(e));
+//		}
 	}
 	
 	private void waitFor(int ms){
@@ -899,11 +646,6 @@ public class DBConnection {
 		}
 		return vert;
 	}
-
-	/*
-    public boolean removeAllEdges(RexsterClient client){
-		return execute("g.E.each{g.removeVertex(it)};g.commit()");
-    }*/
 
 	public static Configuration dbConfigFromFile(String configFilePath){
 		File configFile = new File(configFilePath);

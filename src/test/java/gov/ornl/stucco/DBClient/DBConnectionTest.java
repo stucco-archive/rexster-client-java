@@ -46,7 +46,6 @@ extends TestCase
 	 */
 	public static Test suite()
 	{
-		//return new TestSuite( DBConnectionTest.class );
 		return new TestSetup(new TestSuite(DBConnectionTest.class)) {
 
 	        protected void setUp() throws Exception {
@@ -62,7 +61,7 @@ extends TestCase
 	    		System.out.println(" Global setUp done");
 	        }
 	        protected void tearDown() throws Exception {
-	            //System.out.println(" Global tearDown ");
+
 	        }
 	    };
 	}
@@ -81,24 +80,18 @@ extends TestCase
 		try{
 			Configuration config = DBConnection.getTestConfig();
 			RexsterClient client = DBConnection.createClient(config, WAIT_TIME);
-			List names = client.execute("mgmt = g.getManagementSystem();mgmt.getPropertyKey(\"source\");");
-			if(names.get(0) == null){
-				client.execute("mgmt = g.getManagementSystem();"
-					+ "name = mgmt.makePropertyKey(\"source\").dataType(String.class).cardinality(Cardinality.SET).make();"
-					+ "mgmt.commit();g;");
-			}
 			c = new DBConnection( client );
 			c.createIndices();
 		}catch(Exception e){
 			e.printStackTrace(); //TODO
-		} //the possible NPE below is fine, don't care if test errors.
+		} 
 
-		c.removeAllVertices();
+		c.removeAllVertices(); // when all vertices are removed all edges are dropped
 
 		String vert1 = "{" +
 				"\"_id\":\"CVE-1999-0002\"," +
 				"\"_type\":\"vertex\","+
-				"\"source\":\"CVE\","+
+				"\"source\":[\"CVE\"],"+
 				"\"description\":\"Buffer overflow in NFS mountd gives root access to remote attackers, mostly in Linux systems.\","+
 				"\"references\":["+
 				"\"CERT:CA-98.12.mountd\","+
@@ -111,7 +104,7 @@ extends TestCase
 		String vert2 = "{"+
 				"\"_id\":\"CVE-1999-nnnn\"," +
 				"\"_type\":\"vertex\","+
-				"\"source\":\"CVE\","+
+				"\"source\":[\"CVE\"],"+
 				"\"description\":\"test description asdf.\","+
 				"\"references\":["+
 				"\"http://www.google.com\"],"+
@@ -169,14 +162,12 @@ extends TestCase
 			assertEquals(1, c.getEdgeCount(id, id2, "sameAs"));
 			assertEquals(0, c.getEdgeCount(id2, id, "sameAs")); //just to be sure.
 			Object query_ret;
-			query_ret = c.getClient().execute("g.v("+id2+").outE().inV();");
-			//System.out.println("query ret is: " + query_ret);
+			query_ret = c.getClient().execute("g.v(\""+id2+"\").outE().inV();");
 			List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
 			Map<String, Object> query_ret_map = query_ret_list.get(0);
 			assertEquals(id, query_ret_map.get("_id"));
 
 			c.removeAllVertices();
-			//DBConnection.closeClient(this.client); //can close now, instead of waiting for finalize() to do it
 
 		} catch (RexProException e) {
 			fail("RexProException");
@@ -199,23 +190,21 @@ extends TestCase
 		DBConnection c = null;
 		try{
 			RexsterClient client = DBConnection.createClient(DBConnection.getTestConfig(), WAIT_TIME);
-			List names = client.execute("mgmt = g.getManagementSystem();mgmt.getPropertyKey(\"source\");");
-			if(names.get(0) == null){
-				client.execute("mgmt = g.getManagementSystem();"
-					+ "name = mgmt.makePropertyKey(\"source\").dataType(String.class).cardinality(Cardinality.SET).make();"
-					+ "mgmt.commit();g;");
-			}
 			c = new DBConnection( client );
 			c.createIndices();
 		}catch(Exception e){
 			e.printStackTrace(); //TODO
-		} //the possible NPE below is fine, don't care if test errors.
+		}
 
 		c.removeAllVertices();
 		
-		Map<String, Object> props = new HashMap<String,Object>();
-		props.put("NAME", "testvert_55");
-		c.execute("v = g.addVertex();v.setProperty(\"endIPInt\",55);v.addProperty(\"source\",\"aaaa\");v.setProperty(\"name\",NAME);g.commit()", props);
+		String vert1 = "{"+
+                "\"endIPInt\":55," +
+                "\"_type\":\"vertex\","+
+                "\"source\": [\"aaaa\"],"+
+                "\"name\":\"testvert_55\"" +
+                "}";
+        c.addVertexFromJSON(new JSONObject(vert1));
 		
 		String id = c.findVertId("testvert_55");
 		
@@ -234,7 +223,6 @@ extends TestCase
 		query_ret_map = c.getVertByID(id);
 		assertEquals("33", query_ret_map.get("startIPInt").toString());
 		assertEquals("44", query_ret_map.get("endIPInt").toString());
-		//System.out.println(query_ret_map.get("setProp").toString());
 		assertEquals("[aaaa, bbbb]", query_ret_map.get("source").toString());
 		
 		newProps = new HashMap<String, Object>();
@@ -274,7 +262,6 @@ extends TestCase
 		assertEquals("[aaaa, bbbb, cccc, dddd, eeee, ffff, gggg, hhhh]", query_ret_map.get("source").toString());
 
 		c.removeAllVertices();
-		//DBConnection.closeClient(this.client); //can close now, instead of waiting for finalize() to do it
 	}
 
 	/**
@@ -289,17 +276,11 @@ extends TestCase
 		try{
 			Configuration config = DBConnection.getTestConfig();
 			RexsterClient client = DBConnection.createClient(config, WAIT_TIME);
-			List names = client.execute("mgmt = g.getManagementSystem();mgmt.getPropertyKey(\"source\");");
-			if(names.get(0) == null){
-				client.execute("mgmt = g.getManagementSystem();"
-					+ "name = mgmt.makePropertyKey(\"source\").dataType(String.class).cardinality(Cardinality.SET).make();"
-					+ "mgmt.commit();g;");
-			}
 			c = new DBConnection( client );
 			c.createIndices();
 		}catch(Exception e){
 			e.printStackTrace(); //TODO
-		} //the possible NPE below is fine, don't care if test errors.
+		} 
 
 		c.removeAllVertices();
 
@@ -410,17 +391,11 @@ extends TestCase
 		try{
 			Configuration config = DBConnection.getTestConfig();
 			RexsterClient client = DBConnection.createClient(config, WAIT_TIME);
-			List names = client.execute("mgmt = g.getManagementSystem();mgmt.getPropertyKey(\"source\");");
-			if(names.get(0) == null){
-				client.execute("mgmt = g.getManagementSystem();"
-					+ "name = mgmt.makePropertyKey(\"source\").dataType(String.class).cardinality(Cardinality.SET).make();"
-					+ "mgmt.commit();g;");
-			}
 			c = new DBConnection( client );
 			c.createIndices();
 		}catch(Exception e){
 			e.printStackTrace(); //TODO
-		} //the possible NPE below is fine, don't care if test errors.
+		}
 
 		c.removeAllVertices();
 
@@ -518,83 +493,6 @@ extends TestCase
 			e.printStackTrace();
 		}
 	}
-
-	/**
-	 * Tests loading & querying from realistic graphson file (~2M file)
-	 * @throws IOException 
-	 */
-	/*
-	public void testGraphsonFile() throws IOException
-	{
-		DBConnection c = null;
-		Align a = null;
-		try{
-			c = new DBConnection( DBConnection.getTestClient() );
-			a = new Align( c );
-		}catch(Exception e){
-			e.printStackTrace(); //TODO
-		} //the possible NPE below is fine, don't care if test errors.
-
-		c.removeAllVertices();
-		//c.removeAllEdges();
-
-		String test_graphson_verts = org.apache.commons.io.FileUtils.readFileToString(new File("resources/metasploit_short.json"), "UTF8");
-		a.load(test_graphson_verts);
-
-		try {
-			//find this node, check some properties.
-			String id = a.findVertId("CVE-2006-3459");
-			Map<String, Object> query_ret_map = a.getVertByID(id);
-			assertEquals("Metasploit", query_ret_map.get("source"));
-			assertEquals("vulnerability", query_ret_map.get("vertexType"));
-
-			//find this other node, check its properties.
-			String id2 = a.findVertId("exploit/apple_ios/email/mobilemail_libtiff");
-			query_ret_map = a.getVertByID(id2);
-			assertEquals("Metasploit", query_ret_map.get("source"));
-			assertEquals("malware", query_ret_map.get("vertexType"));
-			assertEquals("exploit", query_ret_map.get("malwareType"));
-			assertEquals("2006-08-01 00:00:00", query_ret_map.get("discoveryDate"));
-			assertEquals("Apple iOS MobileMail LibTIFF Buffer Overflow", query_ret_map.get("shortDescription"));
-			assertEquals("This module exploits a buffer overflow in the version of libtiff shipped with firmware versions 1.00, 1.01, 1.02, and 1.1.1 of the Apple iPhone. iPhones which have not had the BSD tools installed will need to use a special payload.", query_ret_map.get("fullDescription"));
-
-			//and now test the edge between them
-			Object query_ret;
-			query_ret = this.client.execute("g.v("+id2+").outE().inV();");
-			List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
-			query_ret_map = query_ret_list.get(0);
-			assertEquals(id, query_ret_map.get("_id"));
-
-			a.removeAllVertices();
-			//DBConnection.closeClient(this.client); //can close now, instead of waiting for finalize() to do it
-
-		} catch (RexProException e) {
-			fail("RexProException");
-			e.printStackTrace();
-		} catch (IOException e) {
-			fail("IOException");
-			e.printStackTrace();
-		}
-	}
-	 */
-
-	/*
-	public void testAddNodeFile() throws IOException
-	{
-		Align a = new Align();
-
-		String test_graphson_verts_one = org.apache.commons.io.FileUtils.readFileToString(new File("resources/NVD.json"), "UTF8");
-		String test_graphson_verts_two = org.apache.commons.io.FileUtils.readFileToString(new File("resources/bugtraq.json"), "UTF8");
-
-		a.load(test_graphson_verts_one);
-
-		AddNode an = new AddNode(a);
-		an.findDuplicateVertex(test_graphson_verts_two);
-
-		a.removeAllVertices();
-		//DBConnection.closeClient(this.client); //can close now, instead of waiting for finalize() to do it
-	}
-	 */
 }
 
 
