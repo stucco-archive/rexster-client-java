@@ -7,6 +7,7 @@ database_connection:
   message-retry-count : 4
   message-retry-wait-ms : 100
   graph-obj-name : g
-  graph-name : graph
+  graph-name : remote:localhost/home/stuccouser/orientdb/orientdb-community-2.1.2/databases/graph
+#  graph-name : plocal:/home/stuccouser/orientdb/orientdb-community-2.1.2/databases/stucco-test
   transaction : true
   serializer : 0

@@ -27,6 +27,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 
+import com.orientechnologies.orient.core.exception.OCommandExecutionException;
+import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.sql.OCommandSQL;
+import com.tinkerpop.blueprints.impls.orient.OrientDynaElementIterable;
+import com.tinkerpop.blueprints.impls.orient.OrientEdge;
+import com.tinkerpop.blueprints.impls.orient.OrientGraph;
+import com.tinkerpop.blueprints.impls.orient.OrientVertex;
 import com.tinkerpop.rexster.client.RexProException;
 import com.tinkerpop.rexster.client.RexsterClient;
 import com.tinkerpop.rexster.client.RexsterClientFactory;
@@ -34,6 +41,7 @@ import com.tinkerpop.rexster.client.RexsterClientFactory;
 public class DBConnection {
 
 	private RexsterClient client = null;
+	private OrientGraph graph = null;
 	private Logger logger = null;
 	private Map<String, String> vertIDCache = null; //TODO could really split this into a simple cache class.
 	private Set<String> vertIDCacheRecentlyRead = null;
@@ -47,6 +55,25 @@ public class DBConnection {
 	public static RexsterClient createClient(Configuration configOpts) throws IOException{
 		return createClient(configOpts, 0);
 	}
+	
+	public static OrientGraph getOrientGraph(Configuration configOpts) throws IOException{
+	    OrientGraph graph = null;
+	    Logger logger = LoggerFactory.getLogger(DBConnection.class);
+
+	    logger.info("connecting to DB...");
+
+	    try {
+	        // extract configuration for the DB of interest
+	        graph = new OrientGraph(configOpts.getString("graph-name"));
+	    } catch (Exception e) {
+	        logger.warn(e.getLocalizedMessage());
+	        logger.warn(getStackTrace(e));
+	        graph.shutdown();
+	        throw new IOException("could not create OrientDB client connection");
+	    }
+
+	    return graph;
+    }
 
 	/*
 	 * Note that connectionWaitTime is in seconds
@@ -58,6 +85,8 @@ public class DBConnection {
 		logger.info("connecting to DB...");
 
 		try {
+		    // extract configuration for the DB of interest
+		    // client = OrientGraph(/*put path of db here*/)
 			client = RexsterClientFactory.open(configOpts); //this just throws "Exception."  bummer.
 		} catch (Exception e) {
 			logger.warn(e.getLocalizedMessage());
@@ -65,17 +94,17 @@ public class DBConnection {
 			throw new IOException("could not create rexster client connection");
 		}
 
-		//if wait time given, then wait that long, so the connection can set up.  (Mostly needed for travis-ci tests)
-		if(connectionWaitTime > 0){
-			try {
-				logger.info( "waiting for " + connectionWaitTime + " seconds for connection to establish..." );
-				Thread.sleep(connectionWaitTime*1000); //in ms.
-			}
-			catch (InterruptedException ie) { 
-				// Restore the interrupted status
-				Thread.currentThread().interrupt();
-			}
-		}
+//		//if wait time given, then wait that long, so the connection can set up.  (Mostly needed for travis-ci tests)
+//		if(connectionWaitTime > 0){
+//			try {
+//				logger.info( "waiting for " + connectionWaitTime + " seconds for connection to establish..." );
+//				Thread.sleep(connectionWaitTime*1000); //in ms.
+//			}
+//			catch (InterruptedException ie) { 
+//				// Restore the interrupted status
+//				Thread.currentThread().interrupt();
+//			}
+//		}
 
 		return client;
 	}
@@ -94,15 +123,9 @@ public class DBConnection {
 		return configOpts;
 	}
 
-	public static void closeClient(RexsterClient client){
-		if(client != null){
-			try {
-				client.close();
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-			client = null;
+	public static void closeGraph(OrientGraph graph){
+		if(graph != null){
+		    graph.shutdown();
 		}
 	}
 
@@ -118,6 +141,14 @@ public class DBConnection {
 		client = c;
 	}
 	
+	public DBConnection(OrientGraph g){
+	    //TODO
+	    logger = LoggerFactory.getLogger(DBConnection.class);
+	    vertIDCache = new HashMap<String, String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
+	    vertIDCacheRecentlyRead = new HashSet<String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
+	    graph = g;
+	}
+	
 	public void createIndices() throws IOException{
 		// Not sure if this is required other than for tests
 	}
@@ -127,8 +158,7 @@ public class DBConnection {
 	}
 
 	/** Adds a vertex, given a map of its properties as key-value pairs. */
-	public void addVertexFromMap(Map<String, Object> vert) throws RexProException, IOException{
-		String newID = null;
+	public void addVertexFromMap(Map<String, Object> vert) {
 		String name = (String)vert.get("name");
 		String id = (String)vert.get("_id");
 		if(name == null || name.isEmpty()){
@@ -136,8 +166,7 @@ public class DBConnection {
 			vert.put("name", name);
 		}
 		
-		//convert any multivalued properties to a list form.
-		Set<String> keySet = new HashSet<String>( (Set<String>)vert.keySet() );
+		//convert any multi-valued properties to a list form.
 		for(Map.Entry<String, Object> entry : vert.entrySet()) {
 		    String key = entry.getKey();
 		    Object value = entry.getValue();
@@ -148,10 +177,9 @@ public class DBConnection {
 		}
 
 		vert.remove("_id"); //Some graph servers will ignore this ID, some won't.  Just remove them so it's consistent.
-		Map<String, Object> param = new HashMap<String, Object>();
-		param.put("VERT_PROPS", vert);
-
-		newID = (String)client.execute("v = g.addVertex(null, VERT_PROPS);g.commit();v.getId();", param).get(0);		
+		OrientVertex v = graph.addVertex("class:V", vert);
+		graph.commit();
+		return;
 	}
 
 	/**
@@ -216,8 +244,28 @@ public class DBConnection {
         }
         
         //and now finally add edge to graph.  If it fails, return false here. if it was ok, then we can continue below.
-        param.put("EDGE_PROPS", props);
-        execute("g.addEdge(g.v(ID_OUT),g.v(ID_IN),LABEL,EDGE_PROPS); g.commit()", param);
+        String query = String.format("Select * from [%s,%s]", outv_id, inv_id);
+        List<OrientVertex> vertexList = getVerticesFromQuery(query);
+        if(vertexList != null && vertexList.size() == 2) {
+            vertexList.get(0).addEdge(label, vertexList.get(1), null /*iClassName*/, null /*iClusterName*/, props);
+            
+            // alternate way to create an edge using both vertex's, we need another call to specify the properties
+//            String id = String.format("class:%s",label);
+//            OrientEdge e =graph.addEdge((Object)id, vertexList.get(0), vertexList.get(1), label);
+//            e.setProperties(props);
+            graph.commit();
+        } else {
+            // TODO: if one or more vertices are missing nothing can happen.
+            // should log that this happened, especially if we are giving this routine
+            // the two vertices it suppose to connect to.
+            return;
+        }
+        
+        /* Alternative way to creating an edge using SQL, not sure how to specify  */
+        // this approach does not require us to get the vertex references, but it also
+        // doesn't allow us to specify the properties...
+//        query = String.format("Create edge E FROM %s to %s SET label='%s'", outv_id, inv_id,label);
+//        OrientDynaElementIterable qiterable = graph.command(new OCommandSQL(query)).execute();
     }
     
 	private void commit() throws RexProException, IOException{
@@ -270,37 +318,88 @@ public class DBConnection {
 		return client;
 	}
 
-	public Map<String, Object> getVertByID(String id) throws RexProException, IOException{
-		Map<String, Object> param = new HashMap<String, Object>();
-		param.put("ID", id);
+	/** 
+	 * Gets the properties of a vertex selected by RID. 
+	 * 
+	 * @throws OCommandExecutionException on bad query
+	 * 
+	 * @return Map of properties (or null if vertex not found)
+	 */
+	public Map<String, Object> getVertByID(String id) throws OCommandExecutionException {
+	    if(id == null || id.isEmpty())
+            return null;
+	    
+		String query = String.format("Select from %s", id);
+		List<OrientVertex> vertexList = getVerticesFromQuery(query);
+		if(vertexList.isEmpty()){
+            return null;
+		}
 		
-		Object query_ret = client.execute("g.v(ID).map();", param);
-		List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
-		Map<String, Object> query_ret_map = query_ret_list.get(0);
-		return query_ret_map;
+        return vertexList.get(0).getProperties();
 	}
 
-	public Map<String,Object> findVert(String name) throws IOException, RexProException{
+	/** 
+     * Gets the properties of a vertex selected by (the property called) name. 
+     * 
+     * @throws OCommandExecutionException on bad query
+     * 
+     * @return Map of properties (or null if vertex not found)
+     */
+	public Map<String,Object> findVert(String name) throws OCommandExecutionException{
 		if(name == null || name.isEmpty())
 			return null;
-		Map<String, Object> param = new HashMap<String, Object>();
-		param.put("NAME", name);
-		Object query_ret = client.execute("g.query().has(\"name\",NAME).vertices().toList();", param);
-		List<Map<String,Object>> query_ret_list = (List<Map<String,Object>>)query_ret;
-		//logger.info("query returned: " + query_ret_list);
-		if(query_ret_list.size() == 0){
+
+		String query = String.format("Select * from V where name='%s'", name);
+		List<OrientVertex> vertexList = getVerticesFromQuery(query);
+
+		if(vertexList.size() == 0){
 			//logger.info("findVert found 0 matching verts for name:" + name); //this is too noisy, the invoking function can complain if it wants to...
 			return null;
-		}else if(query_ret_list.size() > 1){
+		}else if(vertexList.size() > 1){
 			logger.warn("findVert found more than 1 matching verts for name: " + name + " so returning the first item.");
 			//return null;
 		}
 
-		return query_ret_list.get(0);
+		return vertexList.get(0).getProperties();
 	}
 
-	//function will check vertIDCache first, if id is not in there, then it is calling the findVert funciton
-	public String findVertId(String name) throws IOException, RexProException{
+	/** 
+	 * Runs SQL query to get vertices.
+	 * 
+	 * @throws OCommandExecutionException on bad query
+	 * 
+	 * @return Zero or more vertices
+	 * */
+    public List<OrientVertex> getVerticesFromQuery(String query) throws OCommandExecutionException {
+        OrientDynaElementIterable qiterable = graph.command(new OCommandSQL(query)).execute();
+        List<OrientVertex> vertexList = new ArrayList<OrientVertex>(1);
+        if (qiterable != null) { // Don't know if this can happen, but just in case
+            Iterator<Object> iter = qiterable.iterator();
+            while (iter.hasNext()) {
+                vertexList.add((OrientVertex) iter.next());
+            }
+        }
+        return vertexList;
+    }
+    
+    /** 
+     * Runs SQL query to get number of vertices.
+     * 
+     * @throws OCommandExecutionException on bad query
+     * 
+     * @return Zero or more vertices
+     * */
+    private int getVertexCountFromQuery(String query) throws OCommandExecutionException {
+        int count = 0;
+        OrientDynaElementIterable qiterable = graph.command(new OCommandSQL(query)).execute();
+        if (qiterable != null) { // Don't know if this can happen, but just in case
+            count = (Integer)qiterable.iterator().next();
+        }
+        return count;
+    }
+
+	//function will check vertIDCache first, if id is not in there, then it is calling the findVert function
+	public String findVertId(String name) throws OCommandExecutionException {
 		String id = vertIDCacheGet(name);
 		if(id != null){
 			return id;
@@ -309,7 +408,7 @@ public class DBConnection {
 			if(vert == null) 
 				id = null;
 			else 
-				id = (String)vert.get("_id");
+				id = vert.get("@rid").toString();
 			if(id != null){
 				vertIDCachePut(name, id);
 			}
@@ -359,14 +458,14 @@ public class DBConnection {
 	 * @deprecated use getEdgeCount instead
 	 */
 	@Deprecated
-	public boolean edgeExists(String inv_id, String outv_id, String label) throws RexProException, IOException {
+	public boolean edgeExists(String inv_id, String outv_id, String label) throws OCommandExecutionException {
 		return (getEdgeCount(inv_id, outv_id, label) > 0);
 	}
 	
 	 /*
      * returns edge count, or -1 if IDs not found. Throws exceptions if other error occurred.
      */
-    public int getEdgeCount(String inv_id, String outv_id, String label) throws RexProException, IOException {
+    public int getEdgeCount(String inv_id, String outv_id, String label) throws OCommandExecutionException {
         int retValue = getEdgeCountOrientDB(inv_id, outv_id, label);
         return retValue;
     }
@@ -374,7 +473,7 @@ public class DBConnection {
 	/*
      * returns edge count, or -1 if IDs not found. Throws exceptions if other error occurred.
      */
-    private int getEdgeCountOrientDB(String inv_id, String outv_id, String label) throws RexProException, IOException {
+    private int getEdgeCountOrientDB(String inv_id, String outv_id, String label) throws OCommandExecutionException {
         int edgeCount = 0;
         if(inv_id == null || inv_id.isEmpty() || outv_id == null || outv_id.isEmpty() || label == null || label.isEmpty())
             return -1;
@@ -385,12 +484,12 @@ public class DBConnection {
         param.put("LABEL", label);
         Object query_ret;
 
-        query_ret = client.execute("g.v(ID_OUT);", param);
+        query_ret = getVertByID(outv_id);
         if(query_ret == null){
             logger.warn("getEdgeCount could not find out_id:" + outv_id);
             return -1;
         }
-        query_ret = client.execute("g.v(ID_IN);", param);
+        query_ret = getVertByID(inv_id);
         if(query_ret == null){
             logger.warn("getEdgeCount could not find inv_id:" + inv_id);
             return -1;
@@ -404,21 +503,24 @@ public class DBConnection {
             }
         }
 
+        
         if(!highDegree){
-            query_ret = client.execute("g.v(ID_OUT).outE(LABEL).inV().id;", param);
-            List<String> query_ret_list = (List<String>)query_ret;
-            //System.out.println("query ret list contains " + query_ret_list.size() + " items.");
-            for(String item : query_ret_list){
-                if(inv_id.equals(item))
+            String query = String.format("SELECT expand(out('%s')) FROM %s",label, outv_id); 
+            List<OrientVertex>results = getVerticesFromQuery(query);
+            
+            for(OrientVertex item : results){
+                String idvalue = item.getProperties().get("@rid").toString();
+                if(inv_id.equals(idvalue))
                     edgeCount++;
             }
             return edgeCount;
         }else{
-            query_ret = client.execute("g.v(ID_IN).inE(LABEL).outV().id;", param);
-            List<String> query_ret_list = (List<String>)query_ret;
-            //System.out.println("query ret list contains " + query_ret_list.size() + " items.");
-            for(String item : query_ret_list){
-                if(outv_id.equals(item))
+            String query = String.format("SELECT expand(in('%s')) FROM %s",label, inv_id); 
+            List<OrientVertex>results = getVerticesFromQuery(query);
+            
+            for(OrientVertex item : results){
+                String idvalue = item.getProperties().get("@rid").toString();
+                if(outv_id.equals(idvalue))
                     edgeCount++;
             }
             return edgeCount;
@@ -433,20 +535,16 @@ public class DBConnection {
 	}
     public void updateVertProperty(String id, String key, Object val) throws RexProException, IOException{
         updateVertPropertyOrientDB(id, key, val);
+        graph.commit();
     }
     
 	@SuppressWarnings({ "rawtypes", "unchecked" })
-    public void updateVertPropertyOrientDB(String id, String key, Object val) throws RexProException, IOException{
-		HashMap<String, Object> param = new HashMap<String, Object>();
-
+    public void updateVertPropertyOrientDB(String id, String key, Object val) throws OCommandExecutionException{ 
 		String cardinality = findCardinality(id, key, val);
 		if(cardinality == null){
 			cardinality = "SINGLE";
 			cardinalityCache.put(key, cardinality);
 		}
-
-		param.put("ID", id);
-		param.put("KEY", key);
 
 		if (cardinality.equals("SET")) {
 		    // At this point, we assume it's in List form
@@ -481,15 +579,20 @@ public class DBConnection {
 			    val = currentList;
 			}
 		}
-		param.put("VAL", val);
-		execute("g.v(ID).setProperty(KEY, VAL);g.commit()", param);
+
+		String query = String.format("SELECT FROM %s",id);
+		List<OrientVertex> verts = this.getVerticesFromQuery(query);
+		if(!verts.isEmpty()) {
+//		    execute("g.v(ID).setProperty(KEY, VAL);g.commit()", param);
+		    verts.get(0).setProperty(key, val);
+		}
 //		tryCommit(COMMIT_TRY_LIMIT);
 	}
 	
 	/**
 	 * returns cardinality of property "key" from vertex id.  If not found, returns null.
 	 */
-	private String findCardinality(String id, String key, Object val) throws RexProException, IOException {
+	private String findCardinality(String id, String key, Object val) throws OCommandExecutionException {
 		String cardinality;
 
 		cardinality = cardinalityCache.get(key);
@@ -578,30 +681,8 @@ public class DBConnection {
 		//NB: this query is slow enough that connection can time out if the DB starts with many vertices.
 //		boolean ret = false; 
 		removeCachedVertices();
-		try{
-			client.execute("g.V.remove();g.commit()");
-		}catch(Exception e){
-			e.printStackTrace();
-//			ret = false;
-		}
-//		try{
-//			int tryCount = 0;
-//			List<Object> queryRet;
-//			//Confirm before proceeding
-//			while(ret == false && tryCount < WRITE_CONFIRM_TRY_LIMIT){
-//				//System.out.println("waiting for " + tryCount + " seconds in removeAllVertices()");
-//				waitFor(1000*tryCount +1);
-//				commit();
-//				queryRet = client.execute("g.V.count();");
-//				if( (Long)queryRet.get(0) == 0){
-//					ret = true;
-//				}
-//				tryCount += 1;
-//			}
-//		}catch(Exception e){
-//			logger.warn(e.getLocalizedMessage());
-//			logger.warn(getStackTrace(e));
-//		}
+		graph.command(new OCommandSQL("DELETE VERTEX V")).execute();
+//		graph.commit();
 	}
 	
 	private void waitFor(int ms){

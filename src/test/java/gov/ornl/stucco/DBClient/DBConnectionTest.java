@@ -15,6 +15,9 @@ import org.apache.commons.configuration.Configuration;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import com.orientechnologies.orient.core.exception.OCommandExecutionException;
+import com.tinkerpop.blueprints.impls.orient.OrientGraph;
+import com.tinkerpop.blueprints.impls.orient.OrientVertex;
 import com.tinkerpop.rexster.client.RexProException;
 import com.tinkerpop.rexster.client.RexsterClient;
 
@@ -52,9 +55,10 @@ extends TestCase
 	            System.out.println(" Global setUp started");
 	            DBConnection c = null;
 	    		try{
-	    			RexsterClient client = DBConnection.createClient(DBConnection.getTestConfig(), WAIT_TIME);
-	    			c = new DBConnection( client );
-	    			c.createIndices();
+	    		    OrientGraph graph = DBConnection.getOrientGraph(DBConnection.getTestConfig());
+//	    			RexsterClient client = DBConnection.createClient(DBConnection.getTestConfig(), WAIT_TIME);
+	    			c = new DBConnection( graph );
+//	    			c.createIndices();
 	    		}catch(Exception e){
 	    			e.printStackTrace(); //TODO
 	    		} //don't really care
@@ -79,8 +83,8 @@ extends TestCase
 		DBConnection c = null;
 		try{
 			Configuration config = DBConnection.getTestConfig();
-			RexsterClient client = DBConnection.createClient(config, WAIT_TIME);
-			c = new DBConnection( client );
+			OrientGraph graph = DBConnection.getOrientGraph(config);
+			c = new DBConnection( graph );
 			c.createIndices();
 		}catch(Exception e){
 			e.printStackTrace(); //TODO
@@ -127,7 +131,7 @@ extends TestCase
 
 			//find the other node, check its properties.
 			String id2 = c.findVertId("CVE-1999-nnnn");
-			query_ret_map = (Map<String,Object>)c.findVert("CVE-1999-nnnn").get("_properties");
+			query_ret_map = (Map<String,Object>)c.findVert("CVE-1999-nnnn");
 			assertEquals("test description asdf.", query_ret_map.get("description"));
 			expectedRefs = new String[]{"http://www.google.com"};
 			actualRefs = ((ArrayList<String>)query_ret_map.get("references")).toArray(new String[0]);
@@ -137,13 +141,10 @@ extends TestCase
 			assertEquals(0, c.getEdgeCount(id, id2, "sameAs"));
 			assertEquals(0, c.getEdgeCount(id2, id, "sameAs")); //just to be sure.
 			
-		} catch (RexProException e) {
-			fail("RexProException");
+		} catch (OCommandExecutionException e) {
+			fail("OCommandExecutionException");
 			e.printStackTrace();
-		} catch (IOException e) {
-			fail("IOException");
-			e.printStackTrace();
-		}
+		} 
 		
 		String edge = "{"+ 
 				"\"_id\":\"asdf\"," +
@@ -159,23 +160,22 @@ extends TestCase
 			//and now we can test the edge between them
 			String id = c.findVertId("CVE-1999-0002");
 			String id2 = c.findVertId("CVE-1999-nnnn");
-			assertEquals(1, c.getEdgeCount(id, id2, "sameAs"));
-			assertEquals(0, c.getEdgeCount(id2, id, "sameAs")); //just to be sure.
-			Object query_ret;
-			query_ret = c.getClient().execute("g.v(\""+id2+"\").outE().inV();");
-			List<Map<String, Object>> query_ret_list = (List<Map<String, Object>>)query_ret;
-			Map<String, Object> query_ret_map = query_ret_list.get(0);
-			assertEquals(id, query_ret_map.get("_id"));
+			int c1 = c.getEdgeCount(id, id2, "sameAs");
+			int c2 = c.getEdgeCount(id2, id, "sameAs");
+			assertEquals(1, c1);
+			assertEquals(0, c2); //just to be sure.
+			
+			String query = String.format("SELECT expand(out()) FROM %s", id2); 
+            List<OrientVertex>results = c.getVerticesFromQuery(query);
+            String idvalue = results.get(0).getProperties().get("@rid").toString();
+			assertEquals(id, idvalue);
 
 			c.removeAllVertices();
 
-		} catch (RexProException e) {
-			fail("RexProException");
+		} catch (OCommandExecutionException e) {
+			fail("OCommandExecutionException");
 			e.printStackTrace();
-		} catch (IOException e) {
-			fail("IOException");
-			e.printStackTrace();
-		}
+		} 
 	}
 
 
@@ -189,9 +189,10 @@ extends TestCase
 	{
 		DBConnection c = null;
 		try{
-			RexsterClient client = DBConnection.createClient(DBConnection.getTestConfig(), WAIT_TIME);
-			c = new DBConnection( client );
-			c.createIndices();
+            Configuration config = DBConnection.getTestConfig();
+            OrientGraph graph = DBConnection.getOrientGraph(config);
+            c = new DBConnection( graph );
+            c.createIndices();
 		}catch(Exception e){
 			e.printStackTrace(); //TODO
 		}
@@ -274,10 +275,10 @@ extends TestCase
 	{
 		DBConnection c = null;
 		try{
-			Configuration config = DBConnection.getTestConfig();
-			RexsterClient client = DBConnection.createClient(config, WAIT_TIME);
-			c = new DBConnection( client );
-			c.createIndices();
+		    Configuration config = DBConnection.getTestConfig();
+		    OrientGraph graph = DBConnection.getOrientGraph(config);
+		    c = new DBConnection( graph );
+		    c.createIndices();
 		}catch(Exception e){
 			e.printStackTrace(); //TODO
 		} 
@@ -308,13 +309,10 @@ extends TestCase
 			assertEquals(0, c.getEdgeCount(id, id2, "hasFlow")); //just to be sure.
 			assertEquals(0, c.getEdgeCount(id2, id, "hasFlow"));
 
-		} catch (RexProException e) {
-			fail("RexProException");
+		} catch (OCommandExecutionException e) {
+			fail("OCommandExecutionException");
 			e.printStackTrace();
-		} catch (IOException e) {
-			fail("IOException");
-			e.printStackTrace();
-		}
+		} 
 
 		String edge = "{"+ 
 				"\"_id\":\"/usr/local/something_hasFlow_11.11.11.11:1111_to_22.22.22.22:1\"," +
@@ -331,16 +329,15 @@ extends TestCase
 			String id2 = c.findVertId("11.11.11.11:1111_to_22.22.22.22:1");
 
 			//There should be no edge between them
-			assertEquals(0, c.getEdgeCount(id, id2, "hasFlow")); //just to be sure.
-			assertEquals(1, c.getEdgeCount(id2, id, "hasFlow"));
+			int c1 = c.getEdgeCount(id, id2, "hasFlow");
+			int c2 = c.getEdgeCount(id2, id, "hasFlow");
+			assertEquals(0, c1); //just to be sure.
+			assertEquals(1, c2);
 
-		} catch (RexProException e) {
-			fail("RexProException");
+		} catch (OCommandExecutionException e) {
+			fail("OCommandExecutionException");
 			e.printStackTrace();
-		} catch (IOException e) {
-			fail("IOException");
-			e.printStackTrace();
-		}
+		} 
 
 		for(int i=2; i<800; i++){
 			String currentVert = "{" +
@@ -370,13 +367,10 @@ extends TestCase
 			assertEquals(0, c.getEdgeCount(id, id2, "hasFlow")); //just to be sure.
 			assertEquals(1, c.getEdgeCount(id2, id, "hasFlow"));
 
-		} catch (RexProException e) {
-			fail("RexProException");
+		} catch (OCommandExecutionException e) {
+			fail("OCommandExecutionException");
 			e.printStackTrace();
-		} catch (IOException e) {
-			fail("IOException");
-			e.printStackTrace();
-		}
+		} 
 	}
 
 	/**
@@ -389,10 +383,10 @@ extends TestCase
 	{
 		DBConnection c = null;
 		try{
-			Configuration config = DBConnection.getTestConfig();
-			RexsterClient client = DBConnection.createClient(config, WAIT_TIME);
-			c = new DBConnection( client );
-			c.createIndices();
+            Configuration config = DBConnection.getTestConfig();
+            OrientGraph graph = DBConnection.getOrientGraph(config);
+            c = new DBConnection( graph );
+            c.createIndices();
 		}catch(Exception e){
 			e.printStackTrace(); //TODO
 		}
@@ -423,13 +417,10 @@ extends TestCase
 			assertEquals(0, c.getEdgeCount(id, id2, "hasIP"));
 			assertEquals(0, c.getEdgeCount(id2, id, "hasIP")); //just to be sure.
 
-		} catch (RexProException e) {
-			fail("RexProException");
+		} catch (OCommandExecutionException e) {
+			fail("OCommandExecutionException");
 			e.printStackTrace();
-		} catch (IOException e) {
-			fail("IOException");
-			e.printStackTrace();
-		}
+		} 
 
 		String edge = "{"+ 
 				"\"_id\":\"11.11.11.11:1111_hasIP_11.11.11.11\"," +
@@ -449,11 +440,8 @@ extends TestCase
 			assertEquals(0, c.getEdgeCount(id, id2, "hasIP"));
 			assertEquals(1, c.getEdgeCount(id2, id, "hasIP")); //just to be sure.
 
-		} catch (RexProException e) {
+		} catch (OCommandExecutionException e) {
 			fail("RexProException");
-			e.printStackTrace();
-		} catch (IOException e) {
-			fail("IOException");
 			e.printStackTrace();
 		}
 
@@ -485,13 +473,10 @@ extends TestCase
 			assertEquals(0, c.getEdgeCount(id, id2, "hasIP"));
 			assertEquals(1, c.getEdgeCount(id2, id, "hasIP")); //just to be sure.
 
-		} catch (RexProException e) {
-			fail("RexProException");
+		} catch (OCommandExecutionException e) {
+			fail("OCommandExecutionException");
 			e.printStackTrace();
-		} catch (IOException e) {
-			fail("IOException");
-			e.printStackTrace();
-		}
+		} 
 	}
 }
 
