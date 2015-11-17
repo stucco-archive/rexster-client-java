@@ -16,14 +16,14 @@ public class Constraint {
 		gt, gte, eq, neq, lte, lt, in, notin
 	}
 	public String condString(Condition c){
-		if(c == Condition.eq) return "T.eq";
-		if(c == Condition.neq) return "T.neq";
-		if(c == Condition.gt) return "T.gt";
-		if(c == Condition.gte) return "T.gte";
-		if(c == Condition.lt) return "T.lt";
-		if(c == Condition.lte) return "T.lte";
-		if(c == Condition.in) return "T.in";
-		if(c == Condition.notin) return "T.notin";
+		if(c == Condition.eq) return "=";
+		if(c == Condition.neq) return "<>";
+		if(c == Condition.gt) return ">";
+		if(c == Condition.gte) return ">=";
+		if(c == Condition.lt) return "<";
+		if(c == Condition.lte) return "<=";
+		if(c == Condition.in) return "IN";
+		if(c == Condition.notin) return "NOT IN";
 		return null;
 	}
 	

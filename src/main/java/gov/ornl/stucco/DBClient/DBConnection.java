@@ -74,6 +74,10 @@ public class DBConnection {
 
 	    return graph;
     }
+	
+	public OrientGraph getGraph() {
+	    return graph;
+	}
 
 	/*
 	 * Note that connectionWaitTime is in seconds
@@ -175,6 +179,7 @@ public class DBConnection {
 		        vert.put(key, newValue);
 		    }
 		}
+		vert.remove("_properties");
 
 		vert.remove("_id"); //Some graph servers will ignore this ID, some won't.  Just remove them so it's consistent.
 		OrientVertex v = graph.addVertex("class:V", vert);
@@ -268,50 +273,50 @@ public class DBConnection {
 //        OrientDynaElementIterable qiterable = graph.command(new OCommandSQL(query)).execute();
     }
     
-	private void commit() throws RexProException, IOException{
-	    execute("g.commit()"); 
-	}
+//	private void commit() throws RexProException, IOException{
+//	    execute("g.commit()"); 
+//	}
 	
-	//tries to commit, returns true if success.
-	private boolean tryCommit(){
-		try{
-			commit();
-		}catch(Exception e){
-		    // TODO: should do logging here
-			return false;
-		}
-		return true;
-	}
+//	//tries to commit, returns true if success.
+//	private boolean tryCommit(){
+//		try{
+//			commit();
+//		}catch(Exception e){
+//		    // TODO: should do logging here
+//			return false;
+//		}
+//		return true;
+//	}
 	
-	//tries to commit, up to 'limit' times. returns true if success.
-	private boolean tryCommit(int limit){
-		int count = 0;
-		boolean result = false;
-		while(!result && count < limit){
-			result = tryCommit();
-			count += 1;
-		}
-		return result;
-	}
+//	//tries to commit, up to 'limit' times. returns true if success.
+//	private boolean tryCommit(int limit){
+//		int count = 0;
+//		boolean result = false;
+//		while(!result && count < limit){
+//			result = tryCommit();
+//			count += 1;
+//		}
+//		return result;
+//	}
 
-	//TODO make private
-	//wrapper to reduce boilerplate
-	//TODO wrapper throws away any return value, 
-	//  it'd be nice to use this even when we want the query's retval... but then we're back w/ exceptions & don't gain much.
-	public boolean execute(String query, Map<String,Object> params) throws RexProException, IOException{
-		if(this.client == null)
-			return false;
-		//Adding a trailing return 'g' on everything: 
-		// no execute() args can end up returning null, due to known API bug.
-		// returning 'g' everywhere is just the simplest workaround for it, since it is always defined.
-		query += ";g";
-		client.execute(query, params);
-		return true;
-	}
-	//likewise.
-	public boolean execute(String query) throws RexProException, IOException{
-		return execute(query,null);
-	}
+//	//TODO make private
+//	//wrapper to reduce boilerplate
+//	//TODO wrapper throws away any return value, 
+//	//  it'd be nice to use this even when we want the query's retval... but then we're back w/ exceptions & don't gain much.
+//	public boolean execute(String query, Map<String,Object> params) throws RexProException, IOException{
+//		if(this.client == null)
+//			return false;
+//		//Adding a trailing return 'g' on everything: 
+//		// no execute() args can end up returning null, due to known API bug.
+//		// returning 'g' everywhere is just the simplest workaround for it, since it is always defined.
+//		query += ";g";
+//		client.execute(query, params);
+//		return true;
+//	}
+//	//likewise.
+//	public boolean execute(String query) throws RexProException, IOException{
+//		return execute(query,null);
+//	}
 
 	//should only use in tests...
 	public RexsterClient getClient(){
@@ -335,7 +340,27 @@ public class DBConnection {
             return null;
 		}
 		
-        return vertexList.get(0).getProperties();
+		return addPropertiesKey(vertexList).get(0);
+	}
+	
+	/**
+	 * Adds the "_properties" key to the map that is copy of the original map.
+	 * 
+	 * @param vertexList
+	 * 
+	 * @return  List of a Map of properties (or an empty list if no vertices)
+	 */
+	private List<Map<String, Object>> addPropertiesKey(List<OrientVertex> vertexList)
+	{
+	    List<Map<String,Object>> listPropertyMap = new ArrayList<Map<String,Object>>();
+	    Map<String, Object> propertyMap = null;
+	    for (OrientVertex v : vertexList) {
+	        propertyMap = v.getProperties();
+	        Map<String,Object> existingProperties = new HashMap<String, Object>(propertyMap);
+	        propertyMap.put("_properties", existingProperties);
+	        listPropertyMap.add(propertyMap);
+	    }
+	    return listPropertyMap;
 	}
 
 	/** 
@@ -360,7 +385,7 @@ public class DBConnection {
 			//return null;
 		}
 
-		return vertexList.get(0).getProperties();
+		return addPropertiesKey(vertexList).get(0);
 	}
 
 	/** 
@@ -434,24 +459,26 @@ public class DBConnection {
 	}
 
 
-	public List<Map<String,Object>> findAllVertsWithProps(List<Constraint> constraints) throws IOException, RexProException{
+	public List<Map<String,Object>> findAllVertsWithProps(List<Constraint> constraints) throws OCommandExecutionException {
 		if(constraints == null || constraints.size() == 0)
 			return null;
 
 		Map<String, Object> param = new HashMap<String, Object>();
-		String query = "g.V";
+		String query = String.format("SELECT FROM V where ");
 		for(int i=0; i<constraints.size(); i++){
 			Constraint c = constraints.get(i);
 			String cond = c.condString(c.cond);
 			String key = c.prop.toUpperCase()+i;
 			param.put(key, c.val);
-			query += ".has(\"" + c.prop + "\"," + cond + "," + key + ")";
+			if(i > 0 ) {
+			    query += " AND ";
+			}
+			query += String.format(" %s %s '%s' ", c.prop, cond, c.val);
 		}
-		query += ";";
-		Object query_ret = client.execute(query, param);
-		List<Map<String,Object>> query_ret_list = (List<Map<String,Object>>)query_ret;
-
-		return query_ret_list;
+		
+		List<OrientVertex> verts = this.getVerticesFromQuery(query);
+		List<Map<String,Object>> verticeProperties = addPropertiesKey(verts);
+		return verticeProperties;
 	}
 
 	/*
@@ -544,6 +571,10 @@ public class DBConnection {
 		if(cardinality == null){
 			cardinality = "SINGLE";
 			cardinalityCache.put(key, cardinality);
+		}
+		
+		if (key.equals("_properties")) {
+		    return;
 		}
 
 		if (cardinality.equals("SET")) {
