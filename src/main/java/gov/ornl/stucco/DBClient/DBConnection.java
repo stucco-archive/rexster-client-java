@@ -27,6 +27,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 
+import com.orientechnologies.orient.core.command.OCommandRequest;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.OCommandSQL;
@@ -396,7 +397,7 @@ public class DBConnection {
 	 * @return Zero or more vertices
 	 * */
     public List<OrientVertex> getVerticesFromQuery(String query) throws OCommandExecutionException {
-        OrientDynaElementIterable qiterable = graph.command(new OCommandSQL(query)).execute();
+        OrientDynaElementIterable qiterable = executeSQL(query);
         List<OrientVertex> vertexList = new ArrayList<OrientVertex>(1);
         if (qiterable != null) { // Don't know if this can happen, but just in case
             Iterator<Object> iter = qiterable.iterator();
@@ -405,6 +406,19 @@ public class DBConnection {
             }
         }
         return vertexList;
+    }
+
+    /**
+     *  Runs SQL query to do things like create properties, indexes, etc...
+     * @param query
+     * @return
+     */
+    public <T> T executeSQL(String query) {
+        OCommandSQL sql = new OCommandSQL(query);
+        OCommandRequest ocr = graph.command(sql);
+        T obj = ocr.<T>execute();
+        
+        return obj;
     }
     
     /** 
@@ -416,7 +430,7 @@ public class DBConnection {
      * */
     private int getVertexCountFromQuery(String query) throws OCommandExecutionException {
         int count = 0;
-        OrientDynaElementIterable qiterable = graph.command(new OCommandSQL(query)).execute();
+        OrientDynaElementIterable qiterable = executeSQL(query);
         if (qiterable != null) { // Don't know if this can happen, but just in case
             count = (Integer)qiterable.iterator().next();
         }
