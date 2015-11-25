@@ -18,8 +18,6 @@ import org.json.JSONObject;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
 import com.tinkerpop.blueprints.impls.orient.OrientGraph;
 import com.tinkerpop.blueprints.impls.orient.OrientVertex;
-import com.tinkerpop.rexster.client.RexProException;
-import com.tinkerpop.rexster.client.RexsterClient;
 
 import junit.extensions.TestSetup;
 import junit.framework.Test;
@@ -31,9 +29,7 @@ import junit.framework.TestSuite;
  */
 public class DBConnectionTest 
 extends TestCase
-{
-	private static final int WAIT_TIME = 3;
-	
+{	
 	/**
 	 * Create the test case
 	 *
@@ -56,9 +52,7 @@ extends TestCase
 	            DBConnection c = null;
 	    		try{
 	    		    OrientGraph graph = DBConnection.getOrientGraph(DBConnection.getTestConfig());
-//	    			RexsterClient client = DBConnection.createClient(DBConnection.getTestConfig(), WAIT_TIME);
 	    			c = new DBConnection( graph );
-//	    			c.createIndices();
 	    		}catch(Exception e){
 	    			e.printStackTrace(); //TODO
 	    		} //don't really care
@@ -75,17 +69,15 @@ extends TestCase
 	/**
 	 * Tests loading, querying, and other basic operations for vertices, edges, properties.
 	 * @throws IOException 
-	 * @throws RexProException 
 	 * @throws JSONException 
 	 */
-	public void testLoad() throws JSONException, RexProException, IOException
+	public void testLoad() throws JSONException, IOException
 	{
 		DBConnection c = null;
 		try{
 			Configuration config = DBConnection.getTestConfig();
 			OrientGraph graph = DBConnection.getOrientGraph(config);
 			c = new DBConnection( graph );
-			c.createIndices();
 		}catch(Exception e){
 			e.printStackTrace(); //TODO
 		} 
@@ -182,17 +174,15 @@ extends TestCase
 	/**
 	 * Tests updating vertex properties
 	 * @throws IOException 
-	 * @throws RexProException 
 	 */
 
-	public void testUpdate() throws RexProException, IOException
+	public void testUpdate() throws IOException
 	{
 		DBConnection c = null;
 		try{
             Configuration config = DBConnection.getTestConfig();
             OrientGraph graph = DBConnection.getOrientGraph(config);
             c = new DBConnection( graph );
-            c.createIndices();
 		}catch(Exception e){
 			e.printStackTrace(); //TODO
 		}
@@ -268,17 +258,15 @@ extends TestCase
 	/**
 	 * creates a vertex of high reverse degree, and one of low degree, and searches for the edge(s) between them.
 	 * @throws IOException 
-	 * @throws RexProException 
 	 * @throws JSONException 
 	 */
-	public void testHighForwardDegreeVerts() throws JSONException, RexProException, IOException
+	public void testHighForwardDegreeVerts() throws JSONException, IOException
 	{
 		DBConnection c = null;
 		try{
 		    Configuration config = DBConnection.getTestConfig();
 		    OrientGraph graph = DBConnection.getOrientGraph(config);
 		    c = new DBConnection( graph );
-		    c.createIndices();
 		}catch(Exception e){
 			e.printStackTrace(); //TODO
 		} 
@@ -376,17 +364,15 @@ extends TestCase
 	/**
 	 * creates a vertex of high reverse degree, and one of low degree, and searches for the edge(s) between them.
 	 * @throws IOException 
-	 * @throws RexProException 
 	 * @throws JSONException 
 	 */
-	public void testHighReverseDegreeVerts() throws JSONException, RexProException, IOException
+	public void testHighReverseDegreeVerts() throws JSONException, IOException
 	{
 		DBConnection c = null;
 		try{
             Configuration config = DBConnection.getTestConfig();
             OrientGraph graph = DBConnection.getOrientGraph(config);
             c = new DBConnection( graph );
-            c.createIndices();
 		}catch(Exception e){
 			e.printStackTrace(); //TODO
 		}

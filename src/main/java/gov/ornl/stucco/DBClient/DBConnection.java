@@ -10,7 +10,6 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -29,34 +28,22 @@ import org.yaml.snakeyaml.Yaml;
 
 import com.orientechnologies.orient.core.command.OCommandRequest;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
-import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.tinkerpop.blueprints.impls.orient.OrientDynaElementIterable;
-import com.tinkerpop.blueprints.impls.orient.OrientEdge;
 import com.tinkerpop.blueprints.impls.orient.OrientGraph;
 import com.tinkerpop.blueprints.impls.orient.OrientVertex;
-import com.tinkerpop.rexster.client.RexProException;
-import com.tinkerpop.rexster.client.RexsterClient;
-import com.tinkerpop.rexster.client.RexsterClientFactory;
 
 public class DBConnection {
 
-	private RexsterClient client = null;
 	private OrientGraph graph = null;
 	private Logger logger = null;
 	private Map<String, String> vertIDCache = null; //TODO could really split this into a simple cache class.
 	private Set<String> vertIDCacheRecentlyRead = null;
 	private static int VERT_ID_CACHE_LIMIT = 10000;
 	private Map<String,String> cardinalityCache = new HashMap<String, String>(200);
-	private static int WRITE_CONFIRM_TRY_LIMIT = 6;
-	private static int COMMIT_TRY_LIMIT = 4;
 	private static String[] HIGH_FORWARD_DEGREE_EDGE_LABELS = {"hasFlow"}; //TODO: update as needed.  Knowing these allows some queries to be optimized.
-	private static String[] HIGH_REVERSE_DEGREE_EDGE_LABELS = {"hasIP", "hasPort", "hasVulnerability", "inAddressRange"}; //TODO: like above, but currently unused (because most queries don't care about the reverse degree).
 
-	public static RexsterClient createClient(Configuration configOpts) throws IOException{
-		return createClient(configOpts, 0);
-	}
-	
+
 	public static OrientGraph getOrientGraph(Configuration configOpts) throws IOException{
 	    OrientGraph graph = null;
 	    Logger logger = LoggerFactory.getLogger(DBConnection.class);
@@ -80,40 +67,6 @@ public class DBConnection {
 	    return graph;
 	}
 
-	/*
-	 * Note that connectionWaitTime is in seconds
-	 */
-	public static RexsterClient createClient(Configuration configOpts, int connectionWaitTime) throws IOException{
-		RexsterClient client = null;
-		Logger logger = LoggerFactory.getLogger(DBConnection.class);
-
-		logger.info("connecting to DB...");
-
-		try {
-		    // extract configuration for the DB of interest
-		    // client = OrientGraph(/*put path of db here*/)
-			client = RexsterClientFactory.open(configOpts); //this just throws "Exception."  bummer.
-		} catch (Exception e) {
-			logger.warn(e.getLocalizedMessage());
-			logger.warn(getStackTrace(e));
-			throw new IOException("could not create rexster client connection");
-		}
-
-//		//if wait time given, then wait that long, so the connection can set up.  (Mostly needed for travis-ci tests)
-//		if(connectionWaitTime > 0){
-//			try {
-//				logger.info( "waiting for " + connectionWaitTime + " seconds for connection to establish..." );
-//				Thread.sleep(connectionWaitTime*1000); //in ms.
-//			}
-//			catch (InterruptedException ie) { 
-//				// Restore the interrupted status
-//				Thread.currentThread().interrupt();
-//			}
-//		}
-
-		return client;
-	}
-
 	public static Configuration getDefaultConfig(){
 		Logger logger = LoggerFactory.getLogger(DBConnection.class);
 		logger.info("Loading default DB Config...");
@@ -135,30 +88,17 @@ public class DBConnection {
 	}
 
 	public DBConnection() throws IOException{
-		this(createClient(getDefaultConfig()));
+		this(getOrientGraph(getDefaultConfig()));
 	}
 
-	public DBConnection(RexsterClient c){
-		//TODO
-		logger = LoggerFactory.getLogger(DBConnection.class);
-		vertIDCache = new HashMap<String, String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
-		vertIDCacheRecentlyRead = new HashSet<String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
-		client = c;
-	}
-	
 	public DBConnection(OrientGraph g){
-	    //TODO
 	    logger = LoggerFactory.getLogger(DBConnection.class);
 	    vertIDCache = new HashMap<String, String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
 	    vertIDCacheRecentlyRead = new HashSet<String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
 	    graph = g;
 	}
 	
-	public void createIndices() throws IOException{
-		// Not sure if this is required other than for tests
-	}
-	
-	public void addVertexFromJSON(JSONObject vert) throws RexProException, IOException{
+	public void addVertexFromJSON(JSONObject vert) {
 		addVertexFromMap(jsonVertToMap(vert));
 	}
 
@@ -215,7 +155,7 @@ public class DBConnection {
         return newValue;
     }
 
-    public void addEdgeFromJSON(JSONObject edge) throws RexProException, IOException{
+    public void addEdgeFromJSON(JSONObject edge) throws IOException{
         Map<String, Object> param = new HashMap<String, Object>();
 
         String outv_id = findVertId(edge.getString("_outV"));
@@ -274,55 +214,6 @@ public class DBConnection {
 //        OrientDynaElementIterable qiterable = graph.command(new OCommandSQL(query)).execute();
     }
     
-//	private void commit() throws RexProException, IOException{
-//	    execute("g.commit()"); 
-//	}
-	
-//	//tries to commit, returns true if success.
-//	private boolean tryCommit(){
-//		try{
-//			commit();
-//		}catch(Exception e){
-//		    // TODO: should do logging here
-//			return false;
-//		}
-//		return true;
-//	}
-	
-//	//tries to commit, up to 'limit' times. returns true if success.
-//	private boolean tryCommit(int limit){
-//		int count = 0;
-//		boolean result = false;
-//		while(!result && count < limit){
-//			result = tryCommit();
-//			count += 1;
-//		}
-//		return result;
-//	}
-
-//	//TODO make private
-//	//wrapper to reduce boilerplate
-//	//TODO wrapper throws away any return value, 
-//	//  it'd be nice to use this even when we want the query's retval... but then we're back w/ exceptions & don't gain much.
-//	public boolean execute(String query, Map<String,Object> params) throws RexProException, IOException{
-//		if(this.client == null)
-//			return false;
-//		//Adding a trailing return 'g' on everything: 
-//		// no execute() args can end up returning null, due to known API bug.
-//		// returning 'g' everywhere is just the simplest workaround for it, since it is always defined.
-//		query += ";g";
-//		client.execute(query, params);
-//		return true;
-//	}
-//	//likewise.
-//	public boolean execute(String query) throws RexProException, IOException{
-//		return execute(query,null);
-//	}
-
-	//should only use in tests...
-	public RexsterClient getClient(){
-		return client;
-	}
 
 	/** 
 	 * Gets the properties of a vertex selected by RID. 
@@ -379,11 +270,9 @@ public class DBConnection {
 		List<OrientVertex> vertexList = getVerticesFromQuery(query);
 
 		if(vertexList.size() == 0){
-			//logger.info("findVert found 0 matching verts for name:" + name); //this is too noisy, the invoking function can complain if it wants to...
 			return null;
 		}else if(vertexList.size() > 1){
 			logger.warn("findVert found more than 1 matching verts for name: " + name + " so returning the first item.");
-			//return null;
 		}
 
 		return addPropertiesKey(vertexList).get(0);
@@ -421,22 +310,6 @@ public class DBConnection {
         return obj;
     }
     
-    /** 
-     * Runs SQL query to get number of vertices.
-     * 
-     * @throws OCommandExecutionException on bad query
-     * 
-     * @return Zero or more vertices
-     * */
-    private int getVertexCountFromQuery(String query) throws OCommandExecutionException {
-        int count = 0;
-        OrientDynaElementIterable qiterable = executeSQL(query);
-        if (qiterable != null) { // Don't know if this can happen, but just in case
-            count = (Integer)qiterable.iterator().next();
-        }
-        return count;
-    }
-
 	//function will check vertIDCache first, if id is not in there, then it is calling the findVert function
 	public String findVertId(String name) throws OCommandExecutionException {
 		String id = vertIDCacheGet(name);
@@ -455,7 +328,7 @@ public class DBConnection {
 		}
 	}
 
-	public List<Map<String,Object>> findAllVertsByType(String vertexType) throws IOException, RexProException{
+	public List<Map<String,Object>> findAllVertsByType(String vertexType) throws IOException {
 		if(vertexType == null || vertexType.isEmpty())
 			return null;
 
@@ -503,18 +376,10 @@ public class DBConnection {
 		return (getEdgeCount(inv_id, outv_id, label) > 0);
 	}
 	
-	 /*
-     * returns edge count, or -1 if IDs not found. Throws exceptions if other error occurred.
-     */
-    public int getEdgeCount(String inv_id, String outv_id, String label) throws OCommandExecutionException {
-        int retValue = getEdgeCountOrientDB(inv_id, outv_id, label);
-        return retValue;
-    }
-
 	/*
      * returns edge count, or -1 if IDs not found. Throws exceptions if other error occurred.
      */
-    private int getEdgeCountOrientDB(String inv_id, String outv_id, String label) throws OCommandExecutionException {
+    public int getEdgeCount(String inv_id, String outv_id, String label) throws OCommandExecutionException {
         int edgeCount = 0;
         if(inv_id == null || inv_id.isEmpty() || outv_id == null || outv_id.isEmpty() || label == null || label.isEmpty())
             return -1;
@@ -568,19 +433,16 @@ public class DBConnection {
         }
     }
 
-	public void updateVert(String id, Map<String, Object> props) throws RexProException, IOException{
+	public void updateVert(String id, Map<String, Object> props) throws IOException{
 		String[] keys = props.keySet().toArray(new String[0]);
 		for(int i=0; i<keys.length; i++){
 			updateVertProperty(id, keys[i], props.get(keys[i]));
+	        graph.commit();
 		}
 	}
-    public void updateVertProperty(String id, String key, Object val) throws RexProException, IOException{
-        updateVertPropertyOrientDB(id, key, val);
-        graph.commit();
-    }
     
 	@SuppressWarnings({ "rawtypes", "unchecked" })
-    public void updateVertPropertyOrientDB(String id, String key, Object val) throws OCommandExecutionException{ 
+    public void updateVertProperty(String id, String key, Object val) throws OCommandExecutionException{ 
 		String cardinality = findCardinality(id, key, val);
 		if(cardinality == null){
 			cardinality = "SINGLE";
@@ -628,10 +490,8 @@ public class DBConnection {
 		String query = String.format("SELECT FROM %s",id);
 		List<OrientVertex> verts = this.getVerticesFromQuery(query);
 		if(!verts.isEmpty()) {
-//		    execute("g.v(ID).setProperty(KEY, VAL);g.commit()", param);
 		    verts.get(0).setProperty(key, val);
 		}
-//		tryCommit(COMMIT_TRY_LIMIT);
 	}
 	
 	/**
@@ -674,14 +534,6 @@ public class DBConnection {
 		if(vertIDCache.size() >= VERT_ID_CACHE_LIMIT){
 			logger.info("vertex id cache exceeded limit of " + VERT_ID_CACHE_LIMIT + 
 					" ... evicting " + (vertIDCache.size() - vertIDCacheRecentlyRead.size()) + " unused items.");
-//			Map<String, String> newVertIDCache = new HashMap<String, String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
-//			for(String n : vertIDCacheRecentlyRead){
-//				if(vertIDCache.containsKey(n)){
-//					newVertIDCache.put(n, vertIDCache.get(n));
-//				}
-//			}
-//			vertIDCacheRecentlyRead = new HashSet<String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
-//			vertIDCache = newVertIDCache;
 			vertIDCache.keySet().retainAll(vertIDCacheRecentlyRead);
 			vertIDCacheRecentlyRead.clear();
 		}
@@ -712,11 +564,7 @@ public class DBConnection {
 
 		//clear the cache now.
 		vertIDCache.clear();
-//		= new HashMap<String, String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
 		vertIDCacheRecentlyRead.clear();// = new HashSet<String>((int) (VERT_ID_CACHE_LIMIT * 1.5));
-
-//		return ret;
-
 	}
 
 	/*
@@ -724,10 +572,8 @@ public class DBConnection {
 	 */
 	public void removeAllVertices(){
 		//NB: this query is slow enough that connection can time out if the DB starts with many vertices.
-//		boolean ret = false; 
 		removeCachedVertices();
 		graph.command(new OCommandSQL("DELETE VERTEX V")).execute();
-//		graph.commit();
 	}
 	
 	private void waitFor(int ms){
@@ -792,10 +638,7 @@ public class DBConnection {
 
 			configMap = (Map<String, Object>) yaml.load( stream );
 
-			//config.load(configFile);
-
 		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		return configMap;
