@@ -5,7 +5,9 @@ import gov.ornl.stucco.DBClient.Constraint.Condition;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.lang.reflect.Array;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -149,9 +151,171 @@ public class InMemoryDBConnection {
 	}
 	
 	public List<String> getVertIDsByConstraints(List<Constraint> constraints) throws Exception{//TODO: real exception: "invalid argument"?
+		Set<String> candidateIDs = null;
+		Set<String> nonMatchingIDs = new HashSet<String>();
 		List<String> matchingIDs = new LinkedList<String>();
-		//TODO lookup.
+		
+		//First, generate candidateIDs set.
+		//Note that after candidateIDs is populated here, it will not be modified.
+		if(indexedVertFields.size() > 0){ //TODO: indices
+			//This should use indexed fields to find candidateIDs, then find the nonMatchingIDs below as usual.
+			//we need to decide if only exact matches are allowed, or if ranges & etc. are ok here.
+			//also, somehow indicate that the constraints used here are 'done', so they aren't re-checked below.
+			candidateIDs = new HashSet<String>();
+		}
+		if(candidateIDs == null){ 
+			//if no initial matchingIDs set was generated yet, use all IDs
+			candidateIDs = vertices.keySet();
+		}
+		
+		//make set of non-matching candidates, based on constraints
+		for(String id : candidateIDs){
+			Map<String, Object> candidateVert = vertices.get(id);
+			for(Constraint c : constraints){
+				if( !compare(candidateVert.get(c.prop), c.cond, c.val) ){
+					nonMatchingIDs.add(id);
+					break;
+				}
+			}
+		}
+		
+		// build the matchingIDs list, based on candidateIDs and nonMatchingIDs
+		for(String id : candidateIDs){
+			if( !nonMatchingIDs.contains(id) ){
+				matchingIDs.add(id);
+			}
+		}
+		
 		return matchingIDs;
+	}
+	
+	private boolean compare(Object o1, Constraint.Condition cond, Object o2) throws Exception{//TODO: real exception: "invalid argument"?
+		
+		//TODO: confirm that this is the best way to handle these cases.
+		if(o1 == null && cond == Condition.eq && o2 == null)
+			return true;
+		if(o1 == null || o2 == null)
+			return false;
+		
+		if(cond == Condition.eq){
+			return o1.equals(o2);
+		}
+		if(cond == Condition.neq){
+			return !o1.equals(o2);
+		}
+		if(cond == Condition.gt){
+			if(o1 instanceof Comparable && o2 instanceof Comparable){
+				Comparable c1 = (Comparable)o1;
+				Comparable c2 = (Comparable)o2;
+				return ( c1.compareTo(c2) > 0 );
+			}else{
+				return false;
+			}
+		}
+		if(cond == Condition.gte){
+			if(o1 instanceof Comparable && o2 instanceof Comparable){
+				Comparable c1 = (Comparable)o1;
+				Comparable c2 = (Comparable)o2;
+				return ( c1.compareTo(c2) >= 0 );
+			}else{
+				return false;
+			}
+		}
+		if(cond == Condition.lt){
+			if(o1 instanceof Comparable && o2 instanceof Comparable){
+				Comparable c1 = (Comparable)o1;
+				Comparable c2 = (Comparable)o2;
+				return ( c1.compareTo(c2) < 0 );
+			}else{
+				return false;
+			}
+		}
+		if(cond == Condition.lte){
+			if(o1 instanceof Comparable && o2 instanceof Comparable){
+				Comparable c1 = (Comparable)o1;
+				Comparable c2 = (Comparable)o2;
+				return ( c1.compareTo(c2) <= 0 );
+			}else{
+				return false;
+			}
+		}
+		if(cond == Condition.in){
+			return contains(o1, o2);
+		}
+		if(cond == Condition.notin){
+			return !contains(o1, o2);
+		}
+		
+		return false;
+	}
+	
+	private boolean contains(Object o1, Object o2){
+		//TODO: confirm that all of these are behaving as a user would expect for all type combinations.
+		//eg. "asdf4.222" does not contain (Double)4.2 or (Integer)4
+		//[101.0, 102.0] does not contain 101, and [101, 102] does not contain 101.0
+		if(o1 instanceof Collection){
+			Collection c1 = (Collection)o1;
+			return c1.contains(o2);
+		}else if(o1 instanceof byte[]){
+			byte[] a1 = (byte[])o1;
+			for(int i=0; i<a1.length; i++){
+				//System.out.println("val is " + a1[i]);
+				if( ((Byte)a1[i]).equals(o2)) return true;
+			}
+		}else if(o1 instanceof short[]){
+			short[] a1 = (short[])o1;
+			for(int i=0; i<a1.length; i++){
+				//System.out.println("val is " + a1[i]);
+				if( ((Short)a1[i]).equals(o2)) return true;
+			}
+		}else if(o1 instanceof int[]){
+			int[] a1 = (int[])o1;
+			for(int i=0; i<a1.length; i++){
+				//System.out.println("val is " + a1[i]);
+				if( ((Integer)a1[i]).equals(o2)) return true;
+			}
+		}else if(o1 instanceof long[]){
+			long[] a1 = (long[])o1;
+			for(int i=0; i<a1.length; i++){
+				//System.out.println("val is " + a1[i]);
+				if( ((Long)a1[i]).equals(o2)) return true;
+			}
+		}else if(o1 instanceof float[]){
+			float[] a1 = (float[])o1;
+			for(int i=0; i<a1.length; i++){
+				//System.out.println("val is " + a1[i]);
+				if( ((Float)a1[i]).equals(o2)) return true;
+			}
+		}else if(o1 instanceof double[]){
+			double[] a1 = (double[])o1;
+			for(int i=0; i<a1.length; i++){
+				//System.out.println("val is " + a1[i]);
+				if( ((Double)a1[i]).equals(o2)) return true;
+			}
+		}else if(o1 instanceof boolean[]){
+			boolean[] a1 = (boolean[])o1;
+			for(int i=0; i<a1.length; i++){
+				//System.out.println("val is " + a1[i]);
+				if( ((Boolean)a1[i]).equals(o2)) return true;
+			}
+		}else if(o1 instanceof char[]){
+			char[] a1 = (char[])o1;
+			for(int i=0; i<a1.length; i++){
+				//System.out.println("val is " + a1[i]);
+				if( ((Character)a1[i]).equals(o2)) return true;
+			}
+		}else if(o1 instanceof Object[]){
+			//System.out.println("Array is " + (Object[])o1);
+			return Arrays.asList((Object[])o1).contains(o2);
+		}else if(o1 instanceof String){
+			String s1 = (String)o1;
+			//System.out.println("String is " + s1);
+			if(o2 instanceof CharSequence || o2 instanceof Character)
+				return s1.contains(o2.toString());
+			else
+				return false;
+		}
+		return false;
 	}
 	
 	public Map<String,Object> getEdgeByID(String edgeID){
