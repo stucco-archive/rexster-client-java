@@ -47,7 +47,7 @@ public class InMemoryDBConnection {
 		return vertices.get(vertID);
 	}
 
-	public Map<String,Object> getVertByName(String vertName) throws Exception{ //TODO: real exception: "invalid state"?
+	public Map<String,Object> getVertByName(String vertName) throws InvalidStateException{
 		if(vertName == null || vertName == "")
 			return null;
 		String id = vertIDs.get(vertName);
@@ -55,7 +55,7 @@ public class InMemoryDBConnection {
 			return null;
 		Map<String, Object> retVal = vertices.get(id);
 		if(retVal == null)
-			throw new Exception("bad state: known vertex name has no known content.");
+			throw new InvalidStateException("bad state: known vertex name has no known content.");
 		return retVal;
 	}
 
@@ -68,12 +68,12 @@ public class InMemoryDBConnection {
 	
 	
 	
-	public List<String> getInVertIDsByRelation(String outVertID, String relation) throws Exception{//TODO: real exception: "invalid argument"?
+	public List<String> getInVertIDsByRelation(String outVertID, String relation) throws InvalidArgumentException{
 		if(relation == null || relation.equals("") ){
-			throw new Exception("cannot get edge with missing or invlid relation");
+			throw new InvalidArgumentException("cannot get edge with missing or invlid relation");
 		}
 		if(outVertID == null || outVertID.equals("") || !vertIDs.containsKey(outVertID)){
-			throw new Exception("cannot get edge with missing or invalid outVertID");
+			throw new InvalidArgumentException("cannot get edge with missing or invalid outVertID");
 		}
 		
 		List<String> relatedIDs = new LinkedList<String>();
@@ -87,12 +87,12 @@ public class InMemoryDBConnection {
 		return relatedIDs;
 	}
 	
-	public List<String> getOutVertIDsByRelation(String inVertID, String relation) throws Exception{//TODO: real exception: "invalid argument"?
+	public List<String> getOutVertIDsByRelation(String inVertID, String relation) throws InvalidArgumentException{
 		if(relation == null || relation.equals("") ){
-			throw new Exception("cannot get edge with missing or invlid relation");
+			throw new InvalidArgumentException("cannot get edge with missing or invlid relation");
 		}
 		if(inVertID == null || inVertID.equals("") || !vertIDs.containsKey(inVertID)){
-			throw new Exception("cannot get edge with missing or invalid inVertID");
+			throw new InvalidArgumentException("cannot get edge with missing or invalid inVertID");
 		}
 		
 		List<String> relatedIDs = new LinkedList<String>();
@@ -106,12 +106,12 @@ public class InMemoryDBConnection {
 		return relatedIDs;
 	}
 	
-	public List<String> getVertIDsByRelation(String vertID, String relation) throws Exception{//TODO: real exception: "invalid argument"?
+	public List<String> getVertIDsByRelation(String vertID, String relation) throws InvalidArgumentException{
 		if(relation == null || relation.equals("") ){
-			throw new Exception("cannot get edge with missing or invlid relation");
+			throw new InvalidArgumentException("cannot get edge with missing or invlid relation");
 		}
 		if(vertID == null || vertID.equals("") || !vertIDs.containsKey(vertID)){
-			throw new Exception("cannot get edge with missing or invalid inVertID");
+			throw new InvalidArgumentException("cannot get edge with missing or invalid inVertID");
 		}
 		
 		List<String> relatedIDs = new LinkedList<String>();
@@ -125,15 +125,15 @@ public class InMemoryDBConnection {
 		return relatedIDs;
 	}
 	
-	public List<String> getEdgeIDsByVert(String inVertID, String outVertID, String relation) throws Exception{//TODO: real exception: "invalid argument"?
+	public List<String> getEdgeIDsByVert(String inVertID, String outVertID, String relation) throws InvalidArgumentException{
 		if(relation == null || relation.equals("") ){
-			throw new Exception("cannot add edge with missing or invlid relation");
+			throw new InvalidArgumentException("cannot get edge with missing or invlid relation");
 		}
 		if(inVertID == null || inVertID.equals("") || !vertIDs.containsKey(inVertID)){
-			throw new Exception("cannot add edge with missing or invalid inVertID");
+			throw new InvalidArgumentException("cannot get edge with missing or invalid inVertID");
 		}
 		if(outVertID == null || outVertID.equals("") || !vertIDs.containsKey(outVertID)){
-			throw new Exception("cannot add edge with missing or invalid outVertID");
+			throw new InvalidArgumentException("cannot get edge with missing or invalid outVertID");
 		}
 		
 		List<String> edgeIDs = new LinkedList<String>();
@@ -150,7 +150,7 @@ public class InMemoryDBConnection {
 		return edgeIDs;
 	}
 	
-	public List<String> getVertIDsByConstraints(List<Constraint> constraints) throws Exception{//TODO: real exception: "invalid argument"?
+	public List<String> getVertIDsByConstraints(List<Constraint> constraints){
 		Set<String> candidateIDs = null;
 		Set<String> nonMatchingIDs = new HashSet<String>();
 		List<String> matchingIDs = new LinkedList<String>();
@@ -189,7 +189,7 @@ public class InMemoryDBConnection {
 		return matchingIDs;
 	}
 	
-	private boolean compare(Object o1, Constraint.Condition cond, Object o2) throws Exception{//TODO: real exception: "invalid argument"?
+	private boolean compare(Object o1, Constraint.Condition cond, Object o2){
 		
 		//TODO: confirm that this is the best way to handle these cases.
 		if(o1 == null && cond == Condition.eq && o2 == null)
@@ -328,10 +328,10 @@ public class InMemoryDBConnection {
 		return edges.remove(edgeID);
 	}
 	
-	public Map<String,Object> removeVertByID(String vertID) throws Exception{ //TODO: real exception: "invalid state"?
+	public Map<String,Object> removeVertByID(String vertID) throws InvalidStateException{
 		Object nameObj = vertices.get(vertID).get("name");
 		if(nameObj == null || !(nameObj instanceof String) ){
-			throw new Exception("bad state: vertex must contain name field");
+			throw new InvalidStateException("bad state: vertex must contain name field");
 		}
 		
 		String name = (String)nameObj;
@@ -340,10 +340,10 @@ public class InMemoryDBConnection {
 		return vertices.remove(vertID);
 	}
 	
-	public String addVertex(Map<String, Object> vert) throws Exception{ //TODO: real exception: "invalid argument"?
+	public String addVertex(Map<String, Object> vert) throws InvalidArgumentException, InvalidStateException{
 		Object nameObj = vert.get("name");
 		if(nameObj == null || !(nameObj instanceof String) || ((String)nameObj).equals("") ){
-			throw new Exception("cannot add vertes with empty name field");
+			throw new InvalidArgumentException("cannot add vertes with empty name field");
 		}//TODO check any other mandatory fields
 		
 		String name = (String)nameObj;
@@ -357,15 +357,15 @@ public class InMemoryDBConnection {
 		return vertID;
 	}
 	
-	public String addEdge(String inVertID, String outVertID, String relation) throws Exception{ //TODO: real exception: "invalid argument"?
+	public String addEdge(String inVertID, String outVertID, String relation) throws InvalidArgumentException{
 		if(relation == null || relation.equals("") ){
-			throw new Exception("cannot add edge with missing or invlid relation");
+			throw new InvalidArgumentException("cannot add edge with missing or invlid relation");
 		}
 		if(inVertID == null || inVertID.equals("") || !vertIDs.containsKey(inVertID)){
-			throw new Exception("cannot add edge with missing or invalid inVertID");
+			throw new InvalidArgumentException("cannot add edge with missing or invalid inVertID");
 		}
 		if(outVertID == null || outVertID.equals("") || !vertIDs.containsKey(outVertID)){
-			throw new Exception("cannot add edge with missing or invalid outVertID");
+			throw new InvalidArgumentException("cannot add edge with missing or invalid outVertID");
 		}
 		//TODO: check if edge is duplicate??  For now, just add it, duplicates are ok I guess.
 		
@@ -380,15 +380,15 @@ public class InMemoryDBConnection {
 		return edgeID;
 	}
 	
-	public void updateVertex(String VertID, Map<String, Object> newVert) throws Exception{ //TODO: real exception: "invalid argument"?
+	public void updateVertex(String VertID, Map<String, Object> newVert) throws InvalidArgumentException{
 		Map<String, Object> oldVert = vertices.get(VertID);
 		if(oldVert == null){
-			throw new Exception("invalid vertex ID");
+			throw new InvalidArgumentException("invalid vertex ID");
 		}
 		Object newVertName = newVert.remove("name");
 		Object oldVertName = oldVert.get("name");
 		if(newVertName != null && !(((String)newVertName).equals((String)oldVertName)) ){
-			throw new Exception("cannot update name of existing vertex");
+			throw new InvalidArgumentException("cannot update name of existing vertex");
 		}
 		
 		for(String k: newVert.keySet()){
