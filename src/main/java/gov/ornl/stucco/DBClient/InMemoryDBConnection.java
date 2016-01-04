@@ -72,7 +72,7 @@ public class InMemoryDBConnection {
 		if(relation == null || relation.equals("") ){
 			throw new InvalidArgumentException("cannot get edge with missing or invlid relation");
 		}
-		if(outVertID == null || outVertID.equals("") || !vertIDs.containsKey(outVertID)){
+		if(outVertID == null || outVertID.equals("") || !vertices.containsKey(outVertID)){
 			throw new InvalidArgumentException("cannot get edge with missing or invalid outVertID");
 		}
 		
@@ -91,7 +91,7 @@ public class InMemoryDBConnection {
 		if(relation == null || relation.equals("") ){
 			throw new InvalidArgumentException("cannot get edge with missing or invlid relation");
 		}
-		if(inVertID == null || inVertID.equals("") || !vertIDs.containsKey(inVertID)){
+		if(inVertID == null || inVertID.equals("") || !vertices.containsKey(inVertID)){
 			throw new InvalidArgumentException("cannot get edge with missing or invalid inVertID");
 		}
 		
@@ -110,7 +110,7 @@ public class InMemoryDBConnection {
 		if(relation == null || relation.equals("") ){
 			throw new InvalidArgumentException("cannot get edge with missing or invlid relation");
 		}
-		if(vertID == null || vertID.equals("") || !vertIDs.containsKey(vertID)){
+		if(vertID == null || vertID.equals("") || !vertices.containsKey(vertID)){
 			throw new InvalidArgumentException("cannot get edge with missing or invalid inVertID");
 		}
 		
@@ -129,10 +129,10 @@ public class InMemoryDBConnection {
 		if(relation == null || relation.equals("") ){
 			throw new InvalidArgumentException("cannot get edge with missing or invlid relation");
 		}
-		if(inVertID == null || inVertID.equals("") || !vertIDs.containsKey(inVertID)){
+		if(inVertID == null || inVertID.equals("") || !vertices.containsKey(inVertID)){
 			throw new InvalidArgumentException("cannot get edge with missing or invalid inVertID");
 		}
-		if(outVertID == null || outVertID.equals("") || !vertIDs.containsKey(outVertID)){
+		if(outVertID == null || outVertID.equals("") || !vertices.containsKey(outVertID)){
 			throw new InvalidArgumentException("cannot get edge with missing or invalid outVertID");
 		}
 		
@@ -361,10 +361,10 @@ public class InMemoryDBConnection {
 		if(relation == null || relation.equals("") ){
 			throw new InvalidArgumentException("cannot add edge with missing or invlid relation");
 		}
-		if(inVertID == null || inVertID.equals("") || !vertIDs.containsKey(inVertID)){
+		if(inVertID == null || inVertID.equals("") || !vertices.containsKey(inVertID)){
 			throw new InvalidArgumentException("cannot add edge with missing or invalid inVertID");
 		}
-		if(outVertID == null || outVertID.equals("") || !vertIDs.containsKey(outVertID)){
+		if(outVertID == null || outVertID.equals("") || !vertices.containsKey(outVertID)){
 			throw new InvalidArgumentException("cannot add edge with missing or invalid outVertID");
 		}
 		//TODO: check if edge is duplicate??  For now, just add it, duplicates are ok I guess.
