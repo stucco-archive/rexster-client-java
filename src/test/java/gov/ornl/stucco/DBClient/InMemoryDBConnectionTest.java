@@ -46,19 +46,326 @@ extends TestCase
 		//return new TestSuite( DBConnectionTest.class );
 		return new TestSetup(new TestSuite(InMemoryDBConnectionTest.class)) {
 
-	        protected void setUp() throws Exception {
+	        protected void setUp(){
 	            //System.out.println(" Global setUp started");
 	    		//System.out.println(" Global setUp done");
 	        }
-	        protected void tearDown() throws Exception {
+	        protected void tearDown(){
 	            //System.out.println(" Global tearDown ");
 	        }
 	    };
 	}
+	
+	/**
+	 * Tests loading, querying, and other basic operations for vertices, edges, properties.
+	 * @throws InvalidStateException
+	 * @throws InvalidArgumentException
+	 */
+	public void testLoad() throws InvalidStateException, InvalidArgumentException
+	{
+		InMemoryDBConnection conn = new InMemoryDBConnection();
+
+		//conn.removeAllVertices(); // when all vertices are removed all edges are dropped
+
+		String vert1 = "{" +
+				"\"name\":\"CVE-1999-0002\"," +
+				"\"_type\":\"vertex\","+
+				"\"source\":[\"CVE\"],"+
+				"\"description\":\"Buffer overflow in NFS mountd gives root access to remote attackers, mostly in Linux systems.\","+
+				"\"references\":["+
+				"\"CERT:CA-98.12.mountd\","+
+				"\"http://www.ciac.org/ciac/bulletins/j-006.shtml\","+
+				"\"http://www.securityfocus.com/bid/121\","+
+				"\"XF:linux-mountd-bo\"],"+
+				"\"status\":\"Entry\","+
+				"\"score\":1.0"+
+				"}";
+		String vert2 = "{"+
+				"\"name\":\"CVE-1999-nnnn\"," +
+				"\"_type\":\"vertex\","+
+				"\"source\":[\"CVE\"],"+
+				"\"description\":\"test description asdf.\","+
+				"\"references\":["+
+				"\"http://www.google.com\"],"+
+				"\"status\":\"Entry\","+
+				"\"score\":1.0"+
+				"}";
+		conn.addVertex(conn.jsonVertToMap(new JSONObject(vert1)));
+		conn.addVertex(conn.jsonVertToMap(new JSONObject(vert2)));
+		
+		//find this node, check some properties.
+		String id = conn.getVertIDByName("CVE-1999-0002");
+		Map<String, Object> vertProps = conn.getVertByID(id);
+		String[] expectedRefs = {"CERT:CA-98.12.mountd","XF:linux-mountd-bo","http://www.ciac.org/ciac/bulletins/j-006.shtml","http://www.securityfocus.com/bid/121"};
+		String[] actualRefs = ((ArrayList<String>)vertProps.get("references")).toArray(new String[0]);
+		assertTrue(expectedRefs.length == actualRefs.length);
+		Arrays.sort(expectedRefs);
+		Arrays.sort(actualRefs);
+		assertTrue(Arrays.equals(expectedRefs, actualRefs));
+
+		//find the other node, check its properties.
+		String id2 = conn.getVertIDByName("CVE-1999-nnnn");
+		vertProps = (Map<String,Object>)conn.getVertByName("CVE-1999-nnnn");
+		assertEquals("test description asdf.", vertProps.get("description"));
+		expectedRefs = new String[]{"http://www.google.com"};
+		actualRefs = ((ArrayList<String>)vertProps.get("references")).toArray(new String[0]);
+		assertTrue(Arrays.equals(expectedRefs, actualRefs));
+
+		//There should be no edge between them
+		assertEquals(0, conn.getEdgeIDsByVert(id, id2, "sameAs").size());
+		assertEquals(0, conn.getEdgeIDsByVert(id2, id, "sameAs").size()); //just to be sure.
+		
+		//now add an edge
+		//conn.addEdge(inVid, outVid, label);
+		conn.addEdge(id, id2, "sameAs");
+		
+		//and now we can test the edge between them
+		int c1 = conn.getEdgeIDsByVert(id, id2, "sameAs").size();
+		int c2 = conn.getEdgeIDsByVert(id2, id, "sameAs").size();
+		assertEquals(1, c1);
+		assertEquals(0, c2);
+		
+		List<String> matchingIDs = null;
+		matchingIDs = conn.getInVertIDsByRelation(id2, "sameAs");
+		assertEquals(1, matchingIDs.size());
+		assertEquals(id, matchingIDs.get(0));
+		
+		matchingIDs = conn.getOutVertIDsByRelation(id, "sameAs");
+		assertEquals(1, matchingIDs.size());
+		assertEquals(id2, matchingIDs.get(0));
+
+		//conn.removeAllVertices();
+	}
 
 
+	/**
+	 * Tests updating vertex properties
+	 * @throws InvalidArgumentException 
+	 * @throws InvalidStateException 
+	 */
+	public void testUpdate() throws InvalidArgumentException, InvalidStateException
+	{
+		InMemoryDBConnection conn = new InMemoryDBConnection();
 
-	public void testConstraints() throws Exception
+		//conn.removeAllVertices();
+		
+		String vert1 = "{"+
+                "\"endIPInt\":55," +
+                "\"_type\":\"vertex\","+
+                "\"source\": [\"aaaa\"],"+
+                "\"name\":\"testvert_55\"" +
+                "}";
+        conn.addVertex(conn.jsonVertToMap(new JSONObject(vert1)));
+		
+		String id = conn.getVertIDByName("testvert_55");
+		
+		Map<String, Object> vertProps = conn.getVertByID(id);
+		assertEquals( "55", vertProps.get("endIPInt").toString());
+		assertEquals( "[aaaa]", vertProps.get("source").toString());
+		
+		Map<String, Object> newProps = new HashMap<String, Object>();
+		newProps.put("source", "aaaa");
+		conn.updateVertex(id, newProps);
+		
+		vertProps = conn.getVertByID(id);
+		assertEquals( "55", vertProps.get("endIPInt").toString());
+		//assertEquals( "[aaaa]", vertProps.get("source").toString());//NB: behavior is now different.
+		assertEquals( "aaaa", vertProps.get("source").toString());
+
+		newProps = new HashMap<String, Object>();
+		newProps.put("startIPInt", "33");
+		newProps.put("endIPInt", "44");
+		newProps.put("source", "bbbb");
+		conn.updateVertex(id, newProps);
+
+		vertProps = conn.getVertByID(id);
+		assertEquals("33", vertProps.get("startIPInt").toString());
+		assertEquals("44", vertProps.get("endIPInt").toString());
+		//assertEquals("[aaaa, bbbb]", vertProps.get("source").toString());//NB: behavior is now different.
+		assertEquals("bbbb", vertProps.get("source").toString());
+		
+		newProps = new HashMap<String, Object>();
+		String[] sourceArray = {"cccc", "dddd"};
+		newProps.put("source", sourceArray);
+		conn.updateVertex(id, newProps);
+
+		vertProps = conn.getVertByID(id);
+		//assertEquals("[aaaa, bbbb, cccc, dddd]", vertProps.get("source").toString());//NB: behavior is now different.
+		assertEquals(sourceArray, vertProps.get("source"));
+		
+		newProps = new HashMap<String, Object>();
+		Set<String> sourceSet = new HashSet<String>();
+		sourceSet.add("eeee");
+		sourceSet.add("ffff");
+		newProps.put("source", sourceSet);
+		conn.updateVertex(id, newProps);
+
+		vertProps = conn.getVertByID(id);
+		//assertEquals("[aaaa, bbbb, cccc, dddd, eeee, ffff]", vertProps.get("source").toString());//NB: behavior is now different.
+		assertEquals("[eeee, ffff]", vertProps.get("source").toString());
+		
+		newProps = new HashMap<String, Object>();
+		List<String> sourceList = new ArrayList<String>();
+		sourceList.add("gggg");
+		sourceList.add("hhhh");
+		newProps.put("source", sourceList);
+		conn.updateVertex(id, newProps);
+
+		vertProps = conn.getVertByID(id);
+		//assertEquals("[aaaa, bbbb, cccc, dddd, eeee, ffff, gggg, hhhh]", vertProps.get("source").toString());//NB: behavior is now different.
+		assertEquals("[gggg, hhhh]", vertProps.get("source").toString());
+		
+		newProps = new HashMap<String, Object>();
+		String[] sourceArr = new String[]{"hhhh", "iiii"};
+		newProps.put("source", sourceArr);
+		conn.updateVertex(id, newProps);
+
+		vertProps = conn.getVertByID(id);
+		//assertEquals("[aaaa, bbbb, cccc, dddd, eeee, ffff, gggg, hhhh, iiii]", vertProps.get("source").toString());//NB: behavior is now different.
+		assertEquals(sourceArr, vertProps.get("source"));
+
+		//conn.removeAllVertices();
+	}
+
+	/**
+	 * creates a vertex of high reverse degree, and one of low degree, and searches for the edge(s) between them.
+	 * @throws InvalidStateException
+	 * @throws InvalidArgumentException
+	 */
+	public void testHighForwardDegreeVerts() throws InvalidArgumentException, InvalidStateException
+	{
+		InMemoryDBConnection conn = new InMemoryDBConnection();
+
+		//conn.removeAllVertices();
+
+		String vert1 = "{" +
+				"\"name\":\"/usr/local/something\"," +
+				"\"_type\":\"vertex\","+
+				"\"source\":\"test\","+
+				"\"vertexType\":\"software\""+
+				"}";
+		String vert2 = "{" +
+				"\"name\":\"11.11.11.11:1111_to_22.22.22.22:1\"," +
+				"\"_type\":\"vertex\","+
+				"\"source\":\"test\","+
+				"\"vertexType\":\"flow\""+
+				"}";
+		conn.addVertex(conn.jsonVertToMap(new JSONObject(vert1)));
+		conn.addVertex(conn.jsonVertToMap(new JSONObject(vert2)));
+
+		//find node ids
+		String id = conn.getVertIDByName("/usr/local/something");
+		String id2 = conn.getVertIDByName("11.11.11.11:1111_to_22.22.22.22:1");
+
+		//There should be no edge between them
+		assertEquals(0, conn.getEdgeIDsByVert(id, id2, "hasFlow").size());
+		assertEquals(0, conn.getEdgeIDsByVert(id2, id, "hasFlow").size());
+
+		//now add an edge
+		//conn.addEdge(inVid, outVid, label);
+		conn.addEdge(id2, id, "hasFlow");
+
+		//Confirm the edge between them
+		int c1 = conn.getEdgeIDsByVert(id2, id, "hasFlow").size();
+		int c2 = conn.getEdgeIDsByVert(id, id2, "hasFlow").size();
+		assertEquals(1, c1);
+		assertEquals(0, c2);
+
+		for(int i=2; i<800; i++){
+			String currentVert = "{" +
+					"\"name\":\"11.11.11.11:1111_to_22.22.22.22:" + i + "\"," +
+					"\"_type\":\"vertex\","+
+					"\"source\":\"test\","+
+					"\"vertexType\":\"flow\""+
+					"}";
+			String currentId = conn.addVertex(conn.jsonVertToMap(new JSONObject(currentVert)));
+			
+			//conn.addEdge(inVid, outVid, label);
+			conn.addEdge(currentId, id, "hasFlow");
+		}
+
+		//find node ids
+		id = conn.getVertIDByName("/usr/local/something");
+		id2 = conn.getVertIDByName("11.11.11.11:1111_to_22.22.22.22:1");
+
+		//Confirm the edge between them
+		assertEquals(1, conn.getEdgeIDsByVert(id2, id, "hasFlow").size());
+		assertEquals(0, conn.getEdgeIDsByVert(id, id2, "hasFlow").size());
+	}
+
+	/**
+	 * creates a vertex of high reverse degree, and one of low degree, and searches for the edge(s) between them.
+	 * @throws InvalidStateException
+	 * @throws InvalidArgumentException
+	 */
+	public void testHighReverseDegreeVerts() throws InvalidArgumentException, InvalidStateException
+	{
+		InMemoryDBConnection conn = new InMemoryDBConnection();
+
+		//conn.removeAllVertices();
+
+		String vert1 = "{" +
+				"\"name\":\"11.11.11.11:1111\"," +
+				"\"_type\":\"vertex\","+
+				"\"source\":\"test\","+
+				"\"vertexType\":\"address\""+
+				"}";
+		String vert2 = "{" +
+				"\"name\":\"11.11.11.11\"," +
+				"\"_type\":\"vertex\","+
+				"\"source\":\"test\","+
+				"\"vertexType\":\"IP\""+
+				"}";
+		conn.addVertex(conn.jsonVertToMap(new JSONObject(vert1)));
+		conn.addVertex(conn.jsonVertToMap(new JSONObject(vert2)));
+
+		//find node ids
+		String id = conn.getVertIDByName("11.11.11.11:1111");
+		String id2 = conn.getVertIDByName("11.11.11.11");
+
+		//There should be no edge between them
+		assertEquals(0, conn.getEdgeIDsByVert(id, id2, "hasIP").size());
+		assertEquals(0, conn.getEdgeIDsByVert(id2, id, "hasIP").size());
+
+		//conn.addEdge(inVid, outVid, label);
+		conn.addEdge(id2, id, "hasIP");
+
+		//find node ids
+		id = conn.getVertIDByName("11.11.11.11:1111");
+		id2 = conn.getVertIDByName("11.11.11.11");
+
+		//Confirm the edge between them
+		assertEquals(1, conn.getEdgeIDsByVert(id2, id, "hasIP").size());
+		assertEquals(0, conn.getEdgeIDsByVert(id, id2, "hasIP").size());
+
+		for(int i=1200; i<2000; i++){
+			String currentVert = "{" +
+					"\"name\":\"11.11.11.11:" + i + "\"," +
+					"\"_type\":\"vertex\","+
+					"\"source\":\"test\","+
+					"\"vertexType\":\"address\""+
+					"}";
+			String currentId = conn.addVertex(conn.jsonVertToMap(new JSONObject(currentVert)));
+			
+			//conn.addEdge(inVid, outVid, label);
+			conn.addEdge(id2, currentId, "hasIP");
+		}
+
+		//find node ids
+		id = conn.getVertIDByName("11.11.11.11:1111");
+		id2 = conn.getVertIDByName("11.11.11.11");
+
+		//Confirm the edge between them
+		assertEquals(1, conn.getEdgeIDsByVert(id2, id, "hasIP").size());
+		assertEquals(0, conn.getEdgeIDsByVert(id, id2, "hasIP").size());
+	}
+
+	/**
+	 * creates a small set of vertices, searches this set by constraints on properties
+	 * @throws InvalidStateException
+	 * @throws InvalidArgumentException
+	 */
+	public void testConstraints() throws InvalidStateException, InvalidArgumentException
 	{
 		InMemoryDBConnection conn = new InMemoryDBConnection();
 		Map<String, Object> vert;
@@ -283,7 +590,6 @@ extends TestCase
 		//System.out.println("Found " + ids.size() + " matching verts with 103 in bbb");
 		
 	}
-
 
 
 }
