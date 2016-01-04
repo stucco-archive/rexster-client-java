@@ -589,6 +589,16 @@ extends TestCase
 		assertEquals(0, ids.size());
 		//System.out.println("Found " + ids.size() + " matching verts with 103 in bbb");
 		
+		c1 = new Constraint("bbb", Condition.in, 103.0);
+		constraints = new LinkedList<Constraint>();
+		constraints.add(c1);
+		ids = conn.getVertIDsByConstraints(constraints);
+		expectedIds = new LinkedList<String>();
+		expectedIds.add(conn.getVertIDByName("bbb_101_102_103"));
+		assertTrue(ids.containsAll(expectedIds));
+		assertEquals(1, ids.size());
+		//System.out.println("Found " + ids.size() + " matching verts with 103.0 in bbb");
+		
 	}
 
 
