@@ -608,7 +608,7 @@ public class InMemoryDBConnection {
 	        for( Object id : vertsJSON.keySet() ) {
 				JSONObject jsonVert = vertsJSON.getJSONObject(id.toString());
 				String description = jsonVert.optString("description");
-				if(description != null){
+				if(description != null && !description.equals("")){
 					//This is kind of an odd workaround, to prevent ui from treating, eg, "URI: www.blah.com | Type: URL |" as a URL instead of a string.
 					//TODO: this is really a problem in the UI, as far as we care it's still just a string either way.
 					jsonVert.put("description", " " + description);
