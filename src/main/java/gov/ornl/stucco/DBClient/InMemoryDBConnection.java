@@ -54,6 +54,15 @@ public class InMemoryDBConnection {
 		//TODO: initialize any indexes.
 	}
 
+
+	public int getVertCount(){
+		return vertices.size();
+	}
+
+	public int getEdgeCount(){
+		return edges.size();
+	}
+
 	public Map<String, Object> getVertByID(String vertID){
 		return vertices.get(vertID);
 	}
@@ -76,9 +85,38 @@ public class InMemoryDBConnection {
 		String id = vertIDs.get(vertName);
 		return id;
 	}
-	
-	
-	
+
+	//returns list of edge info maps.
+	public List<Map<String, Object>> getOutEdges(String outVertID) throws InvalidArgumentException{
+		if(outVertID == null || outVertID.equals("") || !vertices.containsKey(outVertID)){
+			throw new InvalidArgumentException("cannot get edge with missing or invalid outVertID");
+		}
+		List<Map<String, Object>> foundEdges = new LinkedList<Map<String, Object>>();
+		for(Map<String, Object> currEdge : edges.values()){
+			if( ((String)currEdge.get("outVertID")).equals(outVertID) ){
+				//inVertID = currEdge.get("inVertID");
+				//outVertID = currEdge.get("outVertID");
+				//relation = currEdge.get("relation");
+				foundEdges.add(currEdge);
+			}
+		}
+		return foundEdges;
+	}
+
+	//returns list of edge info maps.
+	public List<Map<String, Object>> getInEdges(String inVertID) throws InvalidArgumentException{
+		if(inVertID == null || inVertID.equals("") || !vertices.containsKey(inVertID)){
+			throw new InvalidArgumentException("cannot get edge with missing or invalid inVertID");
+		}
+		List<Map<String, Object>> foundEdges = new LinkedList<Map<String, Object>>();
+		for(Map<String, Object> currEdge : edges.values()){
+			if( ((String)currEdge.get("inVertID")).equals(inVertID) ){
+				foundEdges.add( currEdge );
+			}
+		}
+		return foundEdges;
+	}
+
 	public List<String> getInVertIDsByRelation(String outVertID, String relation) throws InvalidArgumentException{
 		if(relation == null || relation.equals("") ){
 			throw new InvalidArgumentException("cannot get edge with missing or invlid relation");
